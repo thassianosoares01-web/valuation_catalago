@@ -1,0 +1,6 @@
+streamlit
+pandas
+plotly
+yfinance
+gspread
+oauth2client
