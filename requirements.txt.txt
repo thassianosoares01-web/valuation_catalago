@@ -1,6 +1,10 @@
 streamlit
 pandas
+numpy
+scipy
 plotly
 yfinance
-gspread
-oauth2client
+requests
+beautifulsoup4
+openpyxl
+xlsxwriter
