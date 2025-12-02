@@ -26,33 +26,11 @@ st.markdown("""
     div[data-testid="stMetricValue"] { font-size: 22px; }
     .ticker-header { color: #2c3e50; font-size: 24px; font-weight: bold; }
     .footer-link { color: #0077b5 !important; text-decoration: none; font-weight: bold; }
-    
-    /* Estilo para os Cards da Home */
-    .home-card-title { font-size: 20px; font-weight: bold; margin-bottom: 10px; color: #2c3e50; }
-    .home-card-text { color: #555; font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- LOGIN ---
-def check_password():
-    if "password" not in st.secrets: return True
-    def password_entered():
-        if hmac.compare_digest(st.session_state["password"], st.secrets["password"]):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else: st.session_state["password_correct"] = False
-    if st.session_state.get("password_correct", False): return True
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.info("🔒 Acesso Restrito")
-        st.text_input("Senha", type="password", on_change=password_entered, key="password")
-        if "password_correct" in st.session_state: st.error("Senha incorreta.")
-    return False
-
-if not check_password(): st.stop()
-
 # ==========================================
-# 1. FUNÇÕES DE APOIO
+# 1. CONEXÃO E HELPERS
 # ==========================================
 def conectar_gsheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -92,6 +70,20 @@ def salvar_no_db(novo_dict):
     except Exception as e:
         st.error(f"Erro ao salvar: {e}"); return False
 
+def deletar_do_db(indice_reverso):
+    try:
+        sheet = conectar_gsheets()
+        total_rows = len(sheet.get_all_values())
+        # O sheet começa na linha 1, dados na 2. 
+        # Se a lista está invertida, precisamos achar o index real.
+        # (Simplificação: Para deletar com segurança em listas dinâmicas, idealmente usaríamos ID, 
+        # mas aqui vamos assumir que a ordem de leitura se mantém).
+        # *Nota: Deletar em GSheets via índice reverso pode ser arriscado se houver concorrência.
+        # Para este MVP, recomendamos apagar manualmente na planilha se necessário, ou implementar ID único.*
+        st.warning("Para segurança dos dados, a exclusão deve ser feita diretamente no Google Sheets.")
+        return False
+    except: return False
+
 @st.cache_data(ttl=300)
 def obter_cotacao_atual(ticker):
     try:
@@ -102,7 +94,7 @@ def obter_cotacao_atual(ticker):
         return None
     except: return None
 
-# Funções Valuation e Markowitz (Mantidas)
+# Funções de Cálculo (Mantidas)
 def buscar_dividendos_ultimos_5_anos(ticker):
     url = f"https://playinvest.com.br/dividendos/{ticker.lower()}"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -195,13 +187,30 @@ def gerar_hover_text(nome, ret, vol, sharpe, pesos, ativos):
 # ==========================================
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2910/2910312.png", width=80)
 st.sidebar.title("Asset Manager")
+
+# CONTROLE DE ADMIN (Login na Sidebar)
+if "admin_logged" not in st.session_state: st.session_state.admin_logged = False
+
+# Checkbox discreto
+is_admin = st.sidebar.checkbox("🔓 Modo Admin", value=st.session_state.admin_logged)
+
+if is_admin and not st.session_state.admin_logged:
+    senha = st.sidebar.text_input("Senha:", type="password")
+    if senha:
+        if "password" in st.secrets and hmac.compare_digest(senha, st.secrets["password"]):
+            st.session_state.admin_logged = True
+            st.rerun()
+        else:
+            st.sidebar.error("Senha incorreta")
+elif not is_admin:
+    st.session_state.admin_logged = False
+
 st.sidebar.markdown("---")
 opcao = st.sidebar.radio("Menu:", ["🏠 Início", "📊 Valuation (Ações)", "📉 Otimização (Markowitz)", "📚 Catálogo (Estudos)"])
 st.sidebar.markdown("---")
 st.sidebar.markdown('Dev: <a href="https://www.linkedin.com/in/thassianosoares/" target="_blank" class="footer-link">Thassiano Soares</a>', unsafe_allow_html=True)
 
 if opcao == "🏠 Início":
-    # --- CABEÇALHO HOME ---
     st.title("Asset Manager Pro")
     st.markdown("#### 🚀 Plataforma de Inteligência e Gestão de Ativos")
     
@@ -216,58 +225,44 @@ if opcao == "🏠 Início":
     
     st.divider()
     
-    # --- VÍDEO TUTORIAL ---
+    # --- VÍDEO TUTORIAL (MENOR E CENTRALIZADO) ---
     st.subheader("📺 Como usar a plataforma")
-    # !!! TROQUE O LINK ABAIXO PELO SEU VÍDEO DO YOUTUBE !!!
-    st.video("https://www.youtube.com/watch?v=dQw4w9WgXcQ") 
+    c_vid1, c_vid2, c_vid3 = st.columns([1, 2, 1])
+    with c_vid2:
+        # TROQUE PELO SEU LINK DO YOUTUBE AQUI
+        st.video("https://www.youtube.com/watch?v=dQw4w9WgXcQ") 
     
     st.divider()
     
     # --- CARDS DOS MÓDULOS ---
     st.subheader("🛠️ Ferramentas Disponíveis")
-    
     col1, col2, col3 = st.columns(3)
     
     with col1:
         with st.container(border=True):
             st.markdown("### 📊 Valuation")
-            st.markdown("Cálculo automático de preço justo de ações.")
-            st.markdown("""
-            * **Graham** (Valor Patrimonial)
-            * **Bazin** (Dividendos)
-            * **Gordon** (Crescimento)
-            """)
+            st.markdown("Cálculo automático de preço justo.")
             st.info("Acesse no Menu Lateral")
             
     with col2:
         with st.container(border=True):
             st.markdown("### 📉 Otimização")
-            st.markdown("Teoria Moderna de Portfólio (Markowitz).")
-            st.markdown("""
-            * **Fronteira Eficiente**
-            * **Sharpe Máximo**
-            * **Simulação Monte Carlo**
-            """)
+            st.markdown("Fronteira Eficiente e Monte Carlo.")
             st.info("Acesse no Menu Lateral")
             
     with col3:
         with st.container(border=True):
             st.markdown("### 📚 Catálogo")
             st.markdown("Banco de dados de teses de investimento.")
-            st.markdown("""
-            * **Histórico de Estudos**
-            * **Monitoramento de Preço**
-            * **Integração com Google Sheets**
-            """)
             st.info("Acesse no Menu Lateral")
 
 elif opcao == "📊 Valuation (Ações)":
     st.title("📊 Valuation Fundamentalista")
     with st.container(border=True):
         c1, c2, c3 = st.columns(3)
-        tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.08, format="%.2f")
-        tg = c2.number_input("Taxa Gordon", 0.01, 0.50, 0.12, format="%.2f")
-        tc = c3.number_input("Cresc. g", 0.00, 0.10, 0.02, format="%.2f")
+        tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.08, format="%.2f", help="TMA")
+        tg = c2.number_input("Taxa Gordon", 0.01, 0.50, 0.12, format="%.2f", help="Custo Capital")
+        tc = c3.number_input("Cresc. g", 0.00, 0.10, 0.02, format="%.2f", help="Crescimento perpétuo")
         tickers = st.text_area("Tickers", "BBAS3, ITSA4, WEG3")
     if st.button("🔍 Calcular", type="primary"):
         lista = [t.strip() for t in tickers.split(',') if t.strip()]
@@ -319,16 +314,17 @@ elif opcao == "📉 Otimização (Markowitz)":
             rf = st.number_input("Risk Free (%)", 10.0)/100
         
         if st.button("🚀 Otimizar", type="primary"):
-            v = cfg["Visão (%)"].values/100
+            visoes = cfg["Visão (%)"].values/100
+            pesos_user = np.ones(len(sel))/len(sel) # Simplificado
             b = [(r["Min (%)"]/100, r["Max (%)"]/100) for _, r in cfg.iterrows()]
             n = len(sel); w0 = np.ones(n)/n
             cons = ({'type': 'eq', 'fun': lambda x: np.sum(x)-1})
             try:
-                res = minimize(min_sp, w0, args=(v, cov, rf), method='SLSQP', bounds=b, constraints=cons)
-                w = res.x; r_opt, v_opt, s_opt = calc_portfolio(w, v, cov, rf)
-                r_u, v_u, _ = calc_portfolio(np.ones(n)/n, v, cov, rf) # Simplificado user peso igual se n tiver
+                res = minimize(min_sp, w0, args=(visoes, cov, rf), method='SLSQP', bounds=b, constraints=cons)
+                w = res.x; r_opt, v_opt, s_opt = calc_portfolio(w, visoes, cov, rf)
+                r_u, v_u, _ = calc_portfolio(pesos_user, visoes, cov, rf)
                 st.session_state.otimizacao_feita = True
-                st.session_state.res = {'sel': sel, 'r_opt': r_opt, 'v_opt': v_opt, 's_opt': s_opt, 'w': w, 'v': v, 'cov': cov}
+                st.session_state.res = {'sel': sel, 'r_opt': r_opt, 'v_opt': v_opt, 's_opt': s_opt, 'w': w, 'v': visoes, 'cov': cov, 'r_u': r_u, 'v_u': v_u}
             except: st.error("Erro matemático.")
 
         if st.session_state.otimizacao_feita:
@@ -337,6 +333,7 @@ elif opcao == "📉 Otimização (Markowitz)":
             c1.metric("Sharpe", f"{r['s_opt']:.2f}"); c2.metric("Retorno", f"{r['r_opt']:.1%}"); c3.metric("Volatilidade", f"{r['v_opt']:.1%}")
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=15, color='#f1c40f'), name='Ideal'))
+            fig.add_trace(go.Scatter(x=[r['v_u']], y=[r['r_u']], mode='markers', marker=dict(size=12, color='black', symbol='x'), name='Atual (Equiponderada)'))
             st.plotly_chart(fig, use_container_width=True)
             fig_p = go.Figure(data=[go.Pie(labels=r['sel'], values=r['w'], hole=.4)]); st.plotly_chart(fig_p, use_container_width=True)
             
@@ -346,30 +343,37 @@ elif opcao == "📉 Otimização (Markowitz)":
             if st.button("Simular"):
                 o, m, p, s, t = monte_carlo(r['r_opt'], r['v_opt'], ini, aport, int(ano), 0.05)
                 f = go.Figure(); x = np.linspace(0, int(ano), s+1)
-                f.add_trace(go.Scatter(x=x, y=t, name='Teórico')); f.add_trace(go.Scatter(x=x, y=m, name='Esperado'))
+                f.add_trace(go.Scatter(x=x, y=t, name='Teórico', line=dict(color='orange', dash='dot')))
+                f.add_trace(go.Scatter(x=x, y=m, name='Esperado', line=dict(color='green')))
                 st.plotly_chart(f, use_container_width=True)
 
 elif opcao == "📚 Catálogo (Estudos)":
     st.title("📚 Diário de Valuation")
-    if 'temp_p' not in st.session_state: st.session_state.temp_p = {}
-    with st.container(border=True):
-        c1, c2 = st.columns(2)
-        tik = c1.text_input("Ticker").upper()
-        met = c2.selectbox("Método", ["Graham", "Gordon", "DCF"])
-        c3, c4 = st.columns(2)
-        cot = c3.text_input("Ref (R$)", "0,00")
-        jus = c4.text_input("Justo (R$)", "0,00")
-        tese = st.text_area("Tese")
-        c5, c6, c7 = st.columns([2,2,1])
-        k = c5.text_input("Premissa"); v = c6.text_input("Valor")
-        if c7.button("➕"): st.session_state.temp_p[k] = v
-        if st.session_state.temp_p: st.write(st.session_state.temp_p)
-        if st.button("💾 Salvar"):
-            val_j = safe_float(jus); val_c = safe_float(cot)
-            if tik:
-                salvar_no_db({"Data": datetime.now().strftime("%d/%m/%Y"), "Ticker": tik, "Preço Justo": val_j, "Cotação Ref": val_c, "Método": met, "Tese": tese, "Premissas": st.session_state.temp_p.copy()})
-                st.session_state.temp_p = {}; st.rerun()
     
+    # SÓ MOSTRA O FORMULÁRIO SE FOR ADMIN
+    if st.session_state.admin_logged:
+        if 'temp_p' not in st.session_state: st.session_state.temp_p = {}
+        with st.expander("📝 **[ADMIN] Novo Estudo**", expanded=True):
+            c1, c2 = st.columns(2)
+            tik = c1.text_input("Ticker").upper()
+            met = c2.selectbox("Método", ["Graham", "Gordon", "DCF"])
+            c3, c4 = st.columns(2)
+            cot = c3.text_input("Ref (R$)", "0,00")
+            jus = c4.text_input("Justo (R$)", "0,00")
+            tese = st.text_area("Tese")
+            c5, c6, c7 = st.columns([2,2,1])
+            k = c5.text_input("Premissa"); v = c6.text_input("Valor")
+            if c7.button("➕"): st.session_state.temp_p[k] = v
+            if st.session_state.temp_p: st.write(st.session_state.temp_p)
+            if st.button("💾 Salvar"):
+                val_j = safe_float(jus); val_c = safe_float(cot)
+                if tik:
+                    salvar_no_db({"Data": datetime.now().strftime("%d/%m/%Y"), "Ticker": tik, "Preço Justo": val_j, "Cotação Ref": val_c, "Método": met, "Tese": tese, "Premissas": st.session_state.temp_p.copy()})
+                    st.session_state.temp_p = {}; st.rerun()
+    else:
+        st.info("Modo Leitura (Público).")
+
+    # LISTAGEM PÚBLICA
     ldb = carregar_dados_db()
     if ldb:
         for i in ldb[::-1]:
@@ -379,7 +383,7 @@ elif opcao == "📚 Catálogo (Estudos)":
             live = obter_cotacao_atual(i.get('Ticker')); cur = live if live else pr
             up = ((pj-cur)/cur)*100 if cur>0 else 0
             with st.container(border=True):
-                st.subheader(f"{i.get('Ticker')} | {i.get('Metodo')}")
+                st.subheader(f"📊 {i.get('Ticker')} | {i.get('Metodo')}")
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Ref", f"R$ {pr:.2f}"); c2.metric("Justo", f"R$ {pj:.2f}"); c3.metric("Upside", f"{up:.1f}%")
                 with st.expander("Ver Tese"): st.info(i.get('Tese')); st.write(p)
