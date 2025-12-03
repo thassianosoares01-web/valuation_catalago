@@ -10,8 +10,6 @@ import plotly.graph_objects as go
 import hmac
 from datetime import datetime
 import json
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import yfinance as yf
 
 # Tenta importar bibliotecas do Google (Modo Online)
@@ -391,7 +389,7 @@ elif opcao == "📊 Valuation (Ações)":
 
 
 ################################################################################
-# INTERFACE: MARKOWITZ (RESTAURADA V28)
+# INTERFACE: MARKOWITZ (Visual Ajustado)
 ################################################################################
 elif opcao == "📉 Otimização (Markowitz)":
     st.title("📉 Otimizador de Carteira")
@@ -400,12 +398,7 @@ elif opcao == "📉 Otimização (Markowitz)":
         c1, c2 = st.columns([2, 1])
         arquivo = c1.file_uploader("Upload Excel", type=['xlsx'])
         with c2:
-            # --- Definições e Seletor V28 ---
             st.markdown("**Configuração**")
-            # Importante: A V28 não tinha o seletor "Preços vs Retornos" de forma explícita, 
-            # ela assumia que eram Preços e calculava log. 
-            # Mas para manter a robustez que você pediu, mantive o seletor da V33 que é melhor.
-            # Porém, a LÓGICA de data e tratamento é da V28.
             tipo_dados = st.radio("Conteúdo:", ["Preços Históricos (R$)", "Retornos Já Calculados (%)"])
             freq_option = st.selectbox("Freq:", ["Diário (252)", "Mensal (12)"])
             fator_anual = 252 if freq_option.startswith("Diário") else 12
@@ -504,11 +497,33 @@ elif opcao == "📉 Otimização (Markowitz)":
                         ret, vol, _ = calc_portfolio(res.x, r['v'], r['cov'], r['rf'])
                         vx.append(vol); vy.append(ret); txt.append(gerar_hover_text("Curva", ret, vol, _, res.x, r['sel']))
                 
+                # --- INÍCIO DO AJUSTE VISUAL DO GRÁFICO ---
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=vx, y=vy, mode='lines', name='Fronteira', line=dict(color='#3498db', width=3), hoverinfo='text', text=txt))
-                fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=15, color='#f1c40f'), name='Ideal'))
+                # Linha da Fronteira (Azul padrão, nome ajustado)
+                fig.add_trace(go.Scatter(x=vx, y=vy, mode='lines', name='Fronteira Eficiente', line=dict(color='blue', width=2), hoverinfo='text', text=txt))
+                # Ponto de Melhor Sharpe (Amarelo/Dourado com borda preta)
+                fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=14, color='gold', line=dict(width=1, color='black')), name='Melhor Sharpe'))
+                # Ponto da Carteira Atual (X preto)
                 fig.add_trace(go.Scatter(x=[r['v_u']], y=[r['r_u']], mode='markers', marker=dict(size=12, color='black', symbol='x'), name='Atual'))
-                fig.update_layout(title="Risco vs. Retorno", xaxis_title="Risco", yaxis_title="Retorno", template="plotly_white", xaxis=dict(tickformat=".1%"), yaxis=dict(tickformat=".1%"), height=400)
+                
+                # Layout ajustado (Títulos, Eixos e Legenda Externa)
+                fig.update_layout(
+                    title="2. Fronteira Eficiente",
+                    xaxis_title="Risco (Volatilidade)",
+                    yaxis_title="Retorno Esperado",
+                    template="plotly_white",
+                    xaxis=dict(tickformat=".1%"),
+                    yaxis=dict(tickformat=".1%"),
+                    height=500,
+                    legend=dict(
+                        yanchor="top",
+                        y=0.99,
+                        xanchor="left",
+                        x=1.02 # Posiciona a legenda fora do gráfico à direita
+                    )
+                )
+                # --- FIM DO AJUSTE VISUAL DO GRÁFICO ---
+
                 st.plotly_chart(fig, use_container_width=True)
             with c_chart2:
                 fig_p = go.Figure(data=[go.Pie(labels=r['sel'], values=r['w'], hole=.4)])
@@ -524,7 +539,10 @@ elif opcao == "📉 Otimização (Markowitz)":
                 f.add_trace(go.Scatter(x=x, y=t, name='Teórico', line=dict(color='orange', dash='dot')))
                 f.add_trace(go.Scatter(x=x, y=m, name='Esperado', line=dict(color='green')))
                 f.add_trace(go.Scatter(x=x, y=p, name='Pessimista', line=dict(color='#abebc6', width=0), fill='tonexty'))
+                # Adicionando a linha da carteira atual no Monte Carlo também
+                usr_mid, _, _, _ = monte_carlo(r['r_u'], r['v_u'], ini, aport, int(ano), 0.05)
                 f.add_trace(go.Scatter(x=x, y=usr_mid, mode='lines', name='Atual (Esperado)', line=dict(color='black', dash='dash')))
+                
                 f.update_layout(title="Crescimento Patrimonial", xaxis_title="Anos", yaxis_title="Patrimônio", template="plotly_white", yaxis=dict(tickprefix="R$ ", tickformat=",.0f"))
                 st.plotly_chart(f, use_container_width=True)
                 st.success(f"💰 **Final Estimado:** R$ {m[-1]:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
