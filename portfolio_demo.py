@@ -48,10 +48,8 @@ def check_password():
 if not check_password(): st.stop()
 
 # ==========================================
-# 1. FUNÇÕES DE APOIO (DB E CALCULOS)
+# 1. CONEXÃO E HELPERS
 # ==========================================
-
-# --- GOOGLE SHEETS ---
 def conectar_gsheets():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = st.secrets["gcp_service_account"]
@@ -94,17 +92,12 @@ def deletar_do_db(indice_reverso):
     try:
         sheet = conectar_gsheets()
         total_rows = len(sheet.get_all_values())
-        # O sheet começa na linha 1, dados na 2. 
-        # Se a lista está invertida, precisamos achar o index real.
         row_to_delete = total_rows - indice_reverso
         sheet.delete_rows(row_to_delete)
         st.cache_data.clear()
         return True
-    except Exception as e:
-        st.error(f"Erro ao deletar: {e}")
-        return False
+    except: return False
 
-# --- YAHOO FINANCE ---
 @st.cache_data(ttl=300)
 def obter_cotacao_atual(ticker):
     try:
@@ -115,7 +108,7 @@ def obter_cotacao_atual(ticker):
         return None
     except: return None
 
-# --- VALUATION ---
+# Funções de Cálculo (Mantidas)
 def buscar_dividendos_ultimos_5_anos(ticker):
     url = f"https://playinvest.com.br/dividendos/{ticker.lower()}"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -164,33 +157,18 @@ def extrair_dados_valuation(ticker, tb, tg, tc):
         return {"Ticker": ticker.upper(), "Preço Atual": p, "DPA Est.": dpa, "Graham": g, "Margem Graham": cm(g), "Bazin": b, "Margem Bazin": cm(b), "Gordon": go, "Margem Gordon": cm(go), "Historico_Raw": []}
     except: return None
 
-# --- MARKOWITZ ---
-def calcular_cagr(serie, fator_anual):
-    if len(serie) < 1: return 0.0
-    retorno_total = (1 + serie).prod()
-    n = len(serie)
-    if fator_anual == 1: return retorno_total - 1
-    expoente = fator_anual / n
-    try: return (retorno_total ** expoente) - 1
-    except: return 0.0
+def calcular_cagr(s, f):
+    if len(s)<1: return 0
+    return ((1+s).prod())**(f/len(s))-1 if f!=1 else (1+s).prod()-1
 
-def gerar_tabela_performance(df_retornos, fator_anual):
-    stats = []
-    for ativo in df_retornos.columns:
-        serie = df_retornos[ativo]
-        ret_total = calcular_cagr(serie, fator_anual)
-        p_12m = 12 if fator_anual == 12 else 252
-        p_24m = 24 if fator_anual == 12 else 504
-        ret_12m = calcular_cagr(serie.tail(p_12m), fator_anual) if len(serie) >= p_12m else np.nan
-        ret_24m = calcular_cagr(serie.tail(p_24m), fator_anual) if len(serie) >= p_24m else np.nan
-        ret_abs = (1 + serie).prod() - 1
-        stats.append({
-            "Ativo": ativo, "Retorno Total (Arquivo)": ret_abs * 100,
-            "Média Histórica (Total)": ret_total * 100,
-            "Últimos 12 Meses": ret_12m * 100 if not np.isnan(ret_12m) else None,
-            "Últimos 24 Meses": ret_24m * 100 if not np.isnan(ret_24m) else None
-        })
-    return pd.DataFrame(stats)
+def gerar_tabela_performance(r, f):
+    s = []
+    for a in r.columns:
+        ser = r[a]; rt = calcular_cagr(ser, f)
+        p12 = 12 if f==12 else 252
+        r12 = calcular_cagr(ser.tail(p12), f) if len(ser)>=p12 else np.nan
+        s.append({"Ativo": a, "Média Histórica (Total)": rt*100, "Últimos 12 Meses": r12*100 if not np.isnan(r12) else None})
+    return pd.DataFrame(s)
 
 def calc_portfolio(w, r, cov, rf):
     rp = np.sum(w * r); vp = np.sqrt(np.dot(w.T, np.dot(cov, w)))
@@ -244,6 +222,8 @@ st.sidebar.markdown('Dev: <a href="https://www.linkedin.com/in/thassianosoares/"
 if opcao == "🏠 Início":
     st.title("Asset Manager Pro")
     st.markdown("#### 🚀 Plataforma de Inteligência e Gestão de Ativos")
+    
+    # Botão LinkedIn
     st.markdown("""
         <a href="https://www.linkedin.com/in/thassianosoares/" target="_blank" style="text-decoration: none;">
             <div style="display: inline-flex; align-items: center; background-color: #0077b5; color: white; padding: 8px 16px; border-radius: 4px; font-family: sans-serif; font-weight: 600;">
@@ -251,19 +231,39 @@ if opcao == "🏠 Início":
             </div>
         </a>
     """, unsafe_allow_html=True)
+    
     st.divider()
+    
+    # --- VÍDEO TUTORIAL (MENOR E CENTRALIZADO) ---
     st.subheader("📺 Como usar a plataforma")
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2:
+    c_vid1, c_vid2, c_vid3 = st.columns([1, 2, 1])
+    with c_vid2:
+        # TROQUE PELO SEU LINK DO YOUTUBE AQUI
         st.video("https://www.youtube.com/watch?v=dQw4w9WgXcQ") 
+    
     st.divider()
+    
+    # --- CARDS DOS MÓDULOS ---
+    st.subheader("🛠️ Ferramentas Disponíveis")
     col1, col2, col3 = st.columns(3)
+    
     with col1:
-        st.info("📊 **Valuation:** Graham, Bazin e Gordon.")
+        with st.container(border=True):
+            st.markdown("### 📊 Valuation")
+            st.markdown("Cálculo automático de preço justo.")
+            st.info("Acesse no Menu Lateral")
+            
     with col2:
-        st.info("📉 **Otimização:** Markowitz e Monte Carlo.")
+        with st.container(border=True):
+            st.markdown("### 📉 Otimização")
+            st.markdown("Fronteira Eficiente e Monte Carlo.")
+            st.info("Acesse no Menu Lateral")
+            
     with col3:
-        st.info("📚 **Catálogo:** Biblioteca de teses.")
+        with st.container(border=True):
+            st.markdown("### 📚 Catálogo")
+            st.markdown("Banco de dados de teses de investimento.")
+            st.info("Acesse no Menu Lateral")
 
 elif opcao == "📊 Valuation (Ações)":
     st.title("📊 Valuation Fundamentalista")
@@ -323,7 +323,6 @@ elif opcao == "📉 Otimização (Markowitz)":
             if len(sel)<2: st.error("Selecione 2+ ativos."); st.stop()
             df_sel = df[sel].dropna()
             ret = df_sel.pct_change().dropna() if tipo_dados.startswith("Preços") else df_sel
-            st.warning("⚠️ Raio-X: Confira se 'Retorno Total' condiz com a realidade.")
             st.dataframe(gerar_tabela_performance(ret, fator).set_index("Ativo").style.format("{:.2f}%", na_rep="-"), use_container_width=True)
             cov = ret.cov() * fator
             media = gerar_tabela_performance(ret, fator)["Média Histórica (Total)"].values
@@ -354,6 +353,7 @@ elif opcao == "📉 Otimização (Markowitz)":
             c1.metric("Sharpe", f"{r['s_opt']:.2f}"); c2.metric("Retorno", f"{r['r_opt']:.1%}"); c3.metric("Volatilidade", f"{r['v_opt']:.1%}")
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=15, color='#f1c40f'), name='Ideal'))
+            fig.add_trace(go.Scatter(x=[r['v_u']], y=[r['r_u']], mode='markers', marker=dict(size=12, color='black', symbol='x'), name='Atual'))
             st.plotly_chart(fig, use_container_width=True)
             fig_p = go.Figure(data=[go.Pie(labels=r['sel'], values=r['w'], hole=.4)]); st.plotly_chart(fig_p, use_container_width=True)
             
@@ -366,6 +366,7 @@ elif opcao == "📉 Otimização (Markowitz)":
                 f.add_trace(go.Scatter(x=x, y=t, name='Teórico', line=dict(color='orange', dash='dot'))); f.add_trace(go.Scatter(x=x, y=m, name='Esperado', line=dict(color='green')))
                 st.plotly_chart(f, use_container_width=True)
 
+# --- CATÁLOGO (ESTUDOS) ---
 elif opcao == "📚 Catálogo (Estudos)":
     st.title("📚 Diário de Valuation")
     
@@ -375,7 +376,7 @@ elif opcao == "📚 Catálogo (Estudos)":
         with st.expander("📝 **[ADMIN] Novo Estudo**", expanded=True):
             c1, c2 = st.columns(2)
             tik = c1.text_input("Ticker").upper()
-            met = c2.selectbox("Método", ["Graham", "Bazin", "Gordon", "DCF"])
+            met = c2.selectbox("Método", ["Graham", "Gordon", "DCF", "Bazin"])
             c3, c4 = st.columns(2)
             cot = c3.text_input("Ref (R$)", "0,00")
             jus = c4.text_input("Justo (R$)", "0,00")
@@ -392,21 +393,54 @@ elif opcao == "📚 Catálogo (Estudos)":
     else:
         st.info("Modo Leitura (Público).")
 
-    ldb = carregar_dados_db()
-    if ldb:
+    # LISTAGEM PÚBLICA (COM VISUAL NOVO E YAHOO)
+    lista_db = carregar_dados_db()
+    if ldb := lista_db:
         for i, item in enumerate(ldb[::-1]):
-            try: p = json.loads(item['Premissas_JSON']) 
-            except: p = {}
-            pj = safe_float(item.get('Preco_Justo', 0)); pr = safe_float(item.get('Cotacao_Ref', 0))
-            live = obter_cotacao_atual(item.get('Ticker')); cur = live if live else pr
-            up = ((pj-cur)/cur)*100 if cur>0 else 0
+            # 1. Recupera Premissas e Preços
+            try: premissas = json.loads(item['Premissas_JSON']) if isinstance(item.get('Premissas_JSON'), str) else {}
+            except: premissas = {}
+            p_justo = safe_float(item.get('Preco_Justo', 0))
+            p_ref = safe_float(item.get('Cotacao_Ref', 0))
+            ticker = item.get('Ticker', '')
+
+            # 2. Busca Live (Yahoo)
+            live = obter_cotacao_atual(ticker)
+            atual = live if live and live > 0 else p_ref
+            lbl = "Ao Vivo" if live else "Ref. Offline"
+            
+            # 3. Calcula Upside
+            upside = ((p_justo - atual) / atual) * 100 if atual > 0 else 0
+            
+            # 4. Card Visual Completo (Com Gauge)
             with st.container(border=True):
                 ch1, ch2 = st.columns([5, 1])
-                ch1.subheader(f"📊 {item.get('Ticker')} | {item.get('Metodo')}")
+                ch1.subheader(f"📊 {ticker} | {item.get('Metodo', '')}")
+                
                 if st.session_state.admin_logged:
                     if ch2.button("🗑️", key=f"del_{i}"): deletar_do_db(i); st.rerun()
-                else: ch2.caption(item.get('Data'))
+                else: ch2.caption(item.get('Data', ''))
+                
                 st.divider()
                 k1, k2, k3, k4 = st.columns(4)
-                k1.metric("Ref", f"R$ {pr:.2f}"); k2.metric("Live", f"R$ {cur:.2f}"); k3.metric("Justo", f"R$ {pj:.2f}"); k4.metric("Upside", f"{up:.1f}%")
-                with st.expander("Ver Tese"): st.info(item.get('Tese')); st.write(p)
+                k1.metric("Ref. Inicial", f"R$ {p_ref:.2f}")
+                k2.metric(lbl, f"R$ {atual:.2f}")
+                k3.metric("Preço Justo", f"R$ {p_justo:.2f}")
+                k4.metric("Upside", f"{upside:+.1f}%", delta="Margem", delta_color="normal")
+                
+                with st.expander("📖 Ver Tese e Gráfico"):
+                    ct, cg = st.columns([1.5, 1])
+                    with ct:
+                        st.info(item.get('Tese', ''))
+                        if premissas: st.table(pd.DataFrame(list(premissas.items()), columns=['Item', 'Valor']))
+                    with cg:
+                        # Gráfico Gauge Integrado
+                        fig = go.Figure(go.Indicator(
+                            mode="gauge+number+delta", value=atual,
+                            domain={'x': [0, 1], 'y': [0, 1]},
+                            title={'text': "Margem"},
+                            delta={'reference': p_justo, 'increasing': {'color': "red"}, 'decreasing': {'color': "green"}},
+                            gauge={'axis': {'range': [None, p_justo*1.5]}, 'bar': {'color': "gray"}, 'steps': [{'range': [0, p_justo], 'color': "#d4edda"}], 'threshold': {'line': {'color': "green", 'width': 4}, 'thickness': 0.75, 'value': p_justo}}
+                        ))
+                        fig.update_layout(height=200, margin=dict(l=20, r=20, t=30, b=20))
+                        st.plotly_chart(fig, use_container_width=True)
