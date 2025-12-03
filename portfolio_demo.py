@@ -10,15 +10,9 @@ import plotly.graph_objects as go
 import hmac
 from datetime import datetime
 import json
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import yfinance as yf
-
-# Tenta importar bibliotecas do Google (Modo Online)
-try:
-    import gspread
-    from oauth2client.service_account import ServiceAccountCredentials
-    HAS_GOOGLE = True
-except ImportError:
-    HAS_GOOGLE = False
 
 # ==========================================
 # 0. CONFIGURAÇÃO E ESTILO
@@ -54,24 +48,19 @@ def check_password():
 if not check_password(): st.stop()
 
 # ==========================================
-# 1. FUNÇÕES DE APOIO
+# 1. FUNÇÕES DE APOIO (DB E CALCULOS)
 # ==========================================
 
 # --- GOOGLE SHEETS ---
 def conectar_gsheets():
-    if not HAS_GOOGLE: return None
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        if "gcp_service_account" not in st.secrets: return None
-        creds_dict = st.secrets["gcp_service_account"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-        sheet = client.open("DB_Valuation").sheet1 
-        return sheet
-    except Exception as e: return None
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    sheet = client.open("DB_Valuation").sheet1 
+    return sheet
 
 def safe_float(valor):
-    """Converte R$ 1.000,00 ou 1000.00 para float puro."""
     if isinstance(valor, (int, float)): return float(valor)
     try: return float(str(valor).replace("R$", "").replace(" ", "").replace(".", "").replace(",", "."))
     except:
@@ -80,48 +69,40 @@ def safe_float(valor):
 
 @st.cache_data(ttl=10) 
 def carregar_dados_db():
-    sheet = conectar_gsheets()
-    if sheet:
-        try: return sheet.get_all_records()
-        except: return []
-    return []
+    try:
+        sheet = conectar_gsheets()
+        return sheet.get_all_records()
+    except: return []
 
 def salvar_no_db(novo_dict):
-    sheet = conectar_gsheets()
-    if sheet:
-        try:
-            # Prepara a linha garantindo formato string compatível com Excel BR
-            linha = [
-                novo_dict['Data'], 
-                novo_dict['Ticker'],
-                str(novo_dict['Preço Justo']).replace(".", ","),
-                str(novo_dict['Cotação Ref']).replace(".", ","),
-                novo_dict['Método'], 
-                novo_dict['Tese'],
-                json.dumps(novo_dict['Premissas'])
-            ]
-            sheet.append_row(linha)
-            st.cache_data.clear()
-            return True
-        except Exception as e:
-            st.error(f"Erro ao salvar: {e}"); return False
-    return False
+    try:
+        sheet = conectar_gsheets()
+        linha = [
+            novo_dict['Data'], novo_dict['Ticker'],
+            str(novo_dict['Preço Justo']).replace(".", ","),
+            str(novo_dict['Cotação Ref']).replace(".", ","),
+            novo_dict['Método'], novo_dict['Tese'],
+            json.dumps(novo_dict['Premissas'])
+        ]
+        sheet.append_row(linha)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar: {e}"); return False
 
 def deletar_do_db(indice_reverso):
     try:
         sheet = conectar_gsheets()
-        if sheet:
-            total_rows = len(sheet.get_all_values())
-            # A lista visual é invertida (mais recente primeiro)
-            # O sheet tem cabeçalho (linha 1)
-            # Se a lista tem 5 itens e clico no index 0 (o primeiro visual, ultimo do sheet)
-            # A linha real é: Total (6) - 0 = 6. 
-            row_to_delete = total_rows - indice_reverso
-            sheet.delete_rows(row_to_delete)
-            st.cache_data.clear()
-            return True
-    except: return False
-    return False
+        total_rows = len(sheet.get_all_values())
+        # O sheet começa na linha 1, dados na 2. 
+        # Se a lista está invertida, precisamos achar o index real.
+        row_to_delete = total_rows - indice_reverso
+        sheet.delete_rows(row_to_delete)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao deletar: {e}")
+        return False
 
 # --- YAHOO FINANCE ---
 @st.cache_data(ttl=300)
@@ -129,20 +110,12 @@ def obter_cotacao_atual(ticker):
     try:
         t = ticker.strip().upper()
         if not t.endswith(".SA") and len(t) <= 6: t = f"{t}.SA"
-        # Tenta com .SA primeiro
         hist = yf.Ticker(t).history(period="1d")
         if not hist.empty: return hist['Close'].iloc[-1]
-        
-        # Fallback sem .SA (EUA/Cripto)
-        hist2 = yf.Ticker(ticker.strip().upper()).history(period="1d")
-        if not hist2.empty: return hist2['Close'].iloc[-1]
-        
         return None
     except: return None
 
-# ==========================================
-# 2. VALUATION (BLOQUEADO / NÃO MEXER)
-# ==========================================
+# --- VALUATION ---
 def buscar_dividendos_ultimos_5_anos(ticker):
     url = f"https://playinvest.com.br/dividendos/{ticker.lower()}"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -158,16 +131,11 @@ def buscar_dividendos_ultimos_5_anos(ticker):
     for r in rows:
         cols = r.find_all("td")
         if len(cols) >= 2:
-            try: 
-                ano = int(cols[0].text.strip())
-                val = float(cols[1].text.strip().replace("R$", "").replace(",", "."))
-                vals.append((ano, val))
+            try: vals.append(float(cols[1].text.strip().replace("R$", "").replace(",", ".")))
             except: continue
     if not vals: return None
-    vals.sort(key=lambda x: x[0], reverse=True)
-    u5 = vals[:5]
-    media = sum([v[1] for v in u5]) / len(u5)
-    return {"media": media, "historico": u5}
+    vals.sort(reverse=True); u5 = vals[:5]
+    return {"media": sum(u5)/len(u5), "historico": u5}
 
 def extrair_dados_valuation(ticker, tb, tg, tc):
     url = f"https://investidor10.com.br/acoes/{ticker.lower()}/"
@@ -188,20 +156,15 @@ def extrair_dados_valuation(ticker, tb, tg, tc):
         vpa = float(g_val("VPA").replace(',','.').replace('%',''))
         p = float(soup.find("div", class_="_card cotacao").find("div", class_="_card-body").span.text.strip().replace("R$", "").replace(",", "."))
         d_data = buscar_dividendos_ultimos_5_anos(ticker)
-        if d_data:
-            dpa = d_data["media"]; historico_raw = d_data["historico"]
-        else:
-            dpa = (float(g_tit("DY").replace(',','.').replace('%',''))/100)*p; historico_raw = []
+        dpa = d_data["media"] if d_data else (float(g_tit("DY").replace(',','.').replace('%',''))/100)*p
         g = round(math.sqrt(22.5* (p/pl) * vpa), 2) if pl>0 and vpa>0 else 0
         b = round(dpa/tb, 2)
         go = round(dpa/(tg-tc), 2)
         def cm(teto): return round(((teto - p) / p), 4) if teto > 0 else 0
-        return {"Ticker": ticker.upper(), "Preço Atual": p, "DPA Est.": dpa, "Graham": g, "Margem Graham": cm(g), "Bazin": b, "Margem Bazin": cm(b), "Gordon": go, "Margem Gordon": cm(go), "Historico_Raw": historico_raw}
+        return {"Ticker": ticker.upper(), "Preço Atual": p, "DPA Est.": dpa, "Graham": g, "Margem Graham": cm(g), "Bazin": b, "Margem Bazin": cm(b), "Gordon": go, "Margem Gordon": cm(go), "Historico_Raw": []}
     except: return None
 
-# ==========================================
-# 3. MARKOWITZ (BLOQUEADO / NÃO MEXER)
-# ==========================================
+# --- MARKOWITZ ---
 def calcular_cagr(serie, fator_anual):
     if len(serie) < 1: return 0.0
     retorno_total = (1 + serie).prod()
@@ -221,7 +184,12 @@ def gerar_tabela_performance(df_retornos, fator_anual):
         ret_12m = calcular_cagr(serie.tail(p_12m), fator_anual) if len(serie) >= p_12m else np.nan
         ret_24m = calcular_cagr(serie.tail(p_24m), fator_anual) if len(serie) >= p_24m else np.nan
         ret_abs = (1 + serie).prod() - 1
-        stats.append({"Ativo": ativo, "Retorno Total do Arquivo": ret_abs * 100, "Média Histórica (Total)": ret_total * 100, "Últimos 12 Meses": ret_12m * 100 if not np.isnan(ret_12m) else None, "Últimos 24 Meses": ret_24m * 100 if not np.isnan(ret_24m) else None})
+        stats.append({
+            "Ativo": ativo, "Retorno Total (Arquivo)": ret_abs * 100,
+            "Média Histórica (Total)": ret_total * 100,
+            "Últimos 12 Meses": ret_12m * 100 if not np.isnan(ret_12m) else None,
+            "Últimos 24 Meses": ret_24m * 100 if not np.isnan(ret_24m) else None
+        })
     return pd.DataFrame(stats)
 
 def calc_portfolio(w, r, cov, rf):
@@ -251,11 +219,12 @@ def gerar_hover_text(nome, ret, vol, sharpe, pesos, ativos):
     return t
 
 # ==========================================
-# 4. INTERFACE
+# 3. INTERFACE E NAVEGAÇÃO
 # ==========================================
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2910/2910312.png", width=80)
 st.sidebar.title("Asset Manager")
 
+# ADMIN LOGIN
 if "admin_logged" not in st.session_state: st.session_state.admin_logged = False
 is_admin = st.sidebar.checkbox("🔓 Acesso Admin", value=st.session_state.admin_logged)
 if is_admin and not st.session_state.admin_logged:
@@ -275,55 +244,59 @@ st.sidebar.markdown('Dev: <a href="https://www.linkedin.com/in/thassianosoares/"
 if opcao == "🏠 Início":
     st.title("Asset Manager Pro")
     st.markdown("#### 🚀 Plataforma de Inteligência e Gestão de Ativos")
-    st.markdown("""<a href="https://www.linkedin.com/in/thassianosoares/" target="_blank" style="text-decoration: none;"><div style="display: inline-flex; align-items: center; background-color: #0077b5; color: white; padding: 8px 16px; border-radius: 4px; font-family: sans-serif; font-weight: 600;"><span>Conectar no LinkedIn</span></div></a>""", unsafe_allow_html=True)
+    st.markdown("""
+        <a href="https://www.linkedin.com/in/thassianosoares/" target="_blank" style="text-decoration: none;">
+            <div style="display: inline-flex; align-items: center; background-color: #0077b5; color: white; padding: 8px 16px; border-radius: 4px; font-family: sans-serif; font-weight: 600;">
+                <span>Conectar no LinkedIn</span>
+            </div>
+        </a>
+    """, unsafe_allow_html=True)
     st.divider()
     st.subheader("📺 Como usar a plataforma")
     c1, c2, c3 = st.columns([1, 2, 1])
-    with c2: st.video("https://www.youtube.com/watch?v=dQw4w9WgXcQ") 
+    with c2:
+        st.video("https://www.youtube.com/watch?v=dQw4w9WgXcQ") 
     st.divider()
-    c1, c2, c3 = st.columns(3)
-    c1.info("📊 **Valuation:** Graham, Bazin e Gordon.")
-    c2.info("📉 **Otimização:** Markowitz e Monte Carlo.")
-    c3.info("📚 **Catálogo:** Banco de teses (Google Sheets).")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.info("📊 **Valuation:** Graham, Bazin e Gordon.")
+    with col2:
+        st.info("📉 **Otimização:** Markowitz e Monte Carlo.")
+    with col3:
+        st.info("📚 **Catálogo:** Biblioteca de teses.")
 
 elif opcao == "📊 Valuation (Ações)":
     st.title("📊 Valuation Fundamentalista")
     with st.container(border=True):
         c1, c2, c3 = st.columns(3)
-        tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.08, format="%.2f", help="TMA")
-        tg = c2.number_input("Taxa Gordon", 0.01, 0.50, 0.12, format="%.2f", help="Custo Capital")
-        tc = c3.number_input("Cresc. g", 0.00, 0.10, 0.02, format="%.2f", help="Crescimento perpétuo")
+        # Inputs com Tooltips (RESTAURADO)
+        tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.08, format="%.2f", help="Taxa Mínima de Atratividade (TMA). Comum: 0.06 a 0.10.")
+        tg = c2.number_input("Taxa Gordon", 0.01, 0.50, 0.12, format="%.2f", help="Custo de Capital (Retorno Exigido).")
+        tc = c3.number_input("Cresc. g", 0.00, 0.10, 0.02, format="%.2f", help="Crescimento perpétuo (g). Deve ser < PIB.")
         tickers = st.text_area("Tickers", "BBAS3, ITSA4, WEG3")
+    
     if st.button("🔍 Calcular", type="primary"):
         lista = [t.strip() for t in tickers.split(',') if t.strip()]
         res = []; bar = st.progress(0)
         for i, t in enumerate(lista):
             d = extrair_dados_valuation(t, tb, tg, tc)
-            if d:
-                hist = d.pop("Historico_Raw") 
-                res.append(d)
-                st.session_state[f'hist_{t}'] = hist 
+            if d: res.append(d)
             bar.progress((i+1)/len(lista))
         if res:
             df = pd.DataFrame(res)
             st.markdown("### Resultados")
             fig = go.Figure()
             l = df['Ticker'].tolist()
+            # Gráfico Restaurado com 4 Barras
             fig.add_trace(go.Bar(x=l, y=df['Preço Atual'], name='Atual', marker_color='#95a5a6', text=df['Preço Atual'], texttemplate='R$ %{y:.2f}'))
             fig.add_trace(go.Bar(x=l, y=df['Graham'], name='Graham', marker_color='#27ae60', text=df['Graham'], texttemplate='R$ %{y:.2f}'))
             fig.add_trace(go.Bar(x=l, y=df['Bazin'], name='Bazin', marker_color='#2980b9', text=df['Bazin'], texttemplate='R$ %{y:.2f}'))
             fig.add_trace(go.Bar(x=l, y=df['Gordon'], name='Gordon', marker_color='#9b59b6', text=df['Gordon'], texttemplate='R$ %{y:.2f}'))
             fig.update_layout(barmode='group', template="plotly_white", height=400)
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Tabela Formatada (Restaurada)
             st.dataframe(df, column_config={"Preço Atual": st.column_config.NumberColumn(format="R$ %.2f"), "DPA Est.": st.column_config.NumberColumn(format="R$ %.4f"), "Graham": st.column_config.NumberColumn(format="R$ %.2f"), "Bazin": st.column_config.NumberColumn(format="R$ %.2f"), "Gordon": st.column_config.NumberColumn(format="R$ %.2f"), "Margem Graham": st.column_config.NumberColumn(format="%.2f%%"), "Margem Bazin": st.column_config.NumberColumn(format="%.2f%%"), "Margem Gordon": st.column_config.NumberColumn(format="%.2f%%")}, use_container_width=True, hide_index=True)
-            with st.expander("📂 Histórico de Dividendos (Ano a Ano)"):
-                for t in lista:
-                    if f'hist_{t}' in st.session_state and st.session_state[f'hist_{t}']:
-                        st.markdown(f"**{t}**")
-                        df_hist = pd.DataFrame(st.session_state[f'hist_{t}'], columns=["Ano", "Valor"])
-                        # Transforma em horizontal (Pivô)
-                        df_T = df_hist.set_index("Ano").T
-                        st.dataframe(df_T, use_container_width=True)
         else: st.warning("Sem dados.")
 
 elif opcao == "📉 Otimização (Markowitz)":
@@ -332,12 +305,10 @@ elif opcao == "📉 Otimização (Markowitz)":
         c1, c2 = st.columns([2, 1])
         arquivo = c1.file_uploader("Upload Excel", type=['xlsx'])
         with c2:
-            tipo_dados = st.radio("Conteúdo:", ["Preços Históricos (R$)", "Retornos Já Calculados (%)"])
+            tipo_dados = st.radio("Conteúdo:", ["Preços (R$)", "Retornos (%)"])
             freq_option = st.selectbox("Freq:", ["Diário (252)", "Mensal (12)"])
-            fator_anual = 252 if freq_option.startswith("Diário") else 12
-    
+            fator = 252 if freq_option.startswith("Diário") else 12
     if 'otimizacao_feita' not in st.session_state: st.session_state.otimizacao_feita = False
-    
     if arquivo:
         try:
             df = pd.read_excel(arquivo)
@@ -350,80 +321,55 @@ elif opcao == "📉 Otimização (Markowitz)":
             col_num = df.select_dtypes(include=[np.number]).columns.tolist()
             sel = st.multiselect("Ativos:", options=df.columns, default=col_num)
             if len(sel)<2: st.error("Selecione 2+ ativos."); st.stop()
-            df_ativos = df[sel].dropna()
-            if tipo_dados.startswith("Preços"): retornos = df_ativos.pct_change().dropna()
-            else: retornos = df_ativos
-            
-            df_perf = gerar_tabela_performance(retornos, fator_anual)
-            st.markdown("---")
-            st.info("Confira os retornos calculados abaixo:")
-            st.dataframe(df_perf.set_index("Ativo").style.format("{:.2f}%", na_rep="-"), use_container_width=True)
-            
-            cov_matrix = retornos.cov() * fator_anual
-            media_historica = df_perf["Média Anualizada (Input Modelo)"].values / 100 
-        except Exception as e: st.error(f"Erro no arquivo: {e}"); st.stop()
+            df_sel = df[sel].dropna()
+            ret = df_sel.pct_change().dropna() if tipo_dados.startswith("Preços") else df_sel
+            st.warning("⚠️ Raio-X: Confira se 'Retorno Total' condiz com a realidade.")
+            st.dataframe(gerar_tabela_performance(ret, fator).set_index("Ativo").style.format("{:.2f}%", na_rep="-"), use_container_width=True)
+            cov = ret.cov() * fator
+            media = gerar_tabela_performance(ret, fator)["Média Histórica (Total)"].values
+        except: st.error("Erro no arquivo."); st.stop()
         
         with st.container(border=True):
-            df_c = pd.DataFrame({"Ativo": sel, "Peso Atual (%)": [round(100/len(sel), 2)] * len(sel), "Visão (%)": [round(m*100, 2) for m in media_historica], "Min (%)": [0.0]*len(sel), "Max (%)": [100.0]*len(sel)})
+            df_c = pd.DataFrame({"Ativo": sel, "Visão (%)": [round(m, 2) for m in media], "Min (%)": [0.0]*len(sel), "Max (%)": [100.0]*len(sel)})
             cfg = st.data_editor(df_c, num_rows="fixed", hide_index=True, use_container_width=True)
             rf = st.number_input("Risk Free (%)", 10.0)/100
         
         if st.button("🚀 Otimizar", type="primary"):
             visoes = cfg["Visão (%)"].values/100
-            pesos_user = cfg["Peso Atual (%)"].values/100
-            if abs(sum(pesos_user) - 100) > 1: pesos_user = pesos_user / sum(pesos_user)
-            elif sum(pesos_user) > 10: pesos_user = pesos_user / 100
+            pesos_user = np.ones(len(sel))/len(sel)
             b = [(r["Min (%)"]/100, r["Max (%)"]/100) for _, r in cfg.iterrows()]
             n = len(sel); w0 = np.ones(n)/n
             cons = ({'type': 'eq', 'fun': lambda x: np.sum(x)-1})
             try:
-                res = minimize(min_sp, w0, args=(visoes, cov_matrix, rf), method='SLSQP', bounds=b, constraints=cons)
-                w = res.x; r_opt, v_opt, s_opt = calc_portfolio(w, visoes, cov_matrix, rf)
-                r_u, v_u, _ = calc_portfolio(pesos_user, visoes, cov_matrix, rf)
+                res = minimize(min_sp, w0, args=(visoes, cov, rf), method='SLSQP', bounds=b, constraints=cons)
+                w = res.x; r_opt, v_opt, s_opt = calc_portfolio(w, visoes, cov, rf)
+                r_u, v_u, _ = calc_portfolio(pesos_user, visoes, cov, rf)
                 st.session_state.otimizacao_feita = True
-                st.session_state.res = {'sel': sel, 'r_opt': r_opt, 'v_opt': v_opt, 's_opt': s_opt, 'w': w, 'v': visoes, 'cov': cov_matrix, 'rf': rf, 'r_u': r_u, 'v_u': v_u, 'pesos_user': pesos_user, 'bounds': b}
+                st.session_state.res = {'sel': sel, 'r_opt': r_opt, 'v_opt': v_opt, 's_opt': s_opt, 'w': w, 'v': visoes, 'cov': cov, 'r_u': r_u, 'v_u': v_u}
             except: st.error("Erro matemático.")
 
         if st.session_state.otimizacao_feita:
             r = st.session_state.res
-            st.markdown("---"); st.markdown("### 🏆 Resultado")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Sharpe", f"{r['s_opt']:.2f}"); col2.metric("Retorno Esp.", f"{r['r_opt']:.1%}"); col3.metric("Risco", f"{r['v_opt']:.1%}")
-            c1, c2 = st.columns([2,1])
-            with c1:
-                max_ret = max(r['v']); 
-                if max_ret < r['r_opt']: max_ret = r['r_opt']*1.1
-                if max_ret > 2.0: max_ret = 2.0
-                tgs = np.linspace(0, max_ret, 40)
-                vx, vy, txt = [], [], []
-                for t in tgs:
-                    res = minimize(min_vol, np.ones(len(r['sel']))/len(r['sel']), args=(r['v'], r['cov'], r['rf']), method='SLSQP', bounds=r['bounds'], constraints=({'type':'eq','fun':lambda x:np.sum(x)-1}, {'type':'eq','fun':lambda x:calc_portfolio(x,r['v'],r['cov'],r['rf'])[0]-t}))
-                    if res.success:
-                        ret, vol, _ = calc_portfolio(res.x, r['v'], r['cov'], r['rf'])
-                        vx.append(vol); vy.append(ret); txt.append(gerar_hover_text("Curva", ret, vol, _, res.x, r['sel']))
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=vx, y=vy, mode='lines', name='Fronteira', line=dict(color='#3498db', width=3), hoverinfo='text', text=txt))
-                fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=15, color='#f1c40f'), name='Ideal'))
-                fig.add_trace(go.Scatter(x=[r['v_u']], y=[r['r_u']], mode='markers', marker=dict(size=12, color='black', symbol='x'), name='Atual'))
-                fig.update_layout(title="Risco vs. Retorno", xaxis_title="Risco", yaxis_title="Retorno", template="plotly_white", xaxis=dict(tickformat=".1%"), yaxis=dict(tickformat=".1%"), height=400)
-                st.plotly_chart(fig, use_container_width=True)
-            with c2:
-                fig_p = go.Figure(data=[go.Pie(labels=r['sel'], values=r['w'], hole=.4)])
-                fig_p.update_layout(title="Alocação Ideal", height=400, showlegend=False)
-                st.plotly_chart(fig_p, use_container_width=True)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Sharpe", f"{r['s_opt']:.2f}"); c2.metric("Retorno", f"{r['r_opt']:.1%}"); c3.metric("Volatilidade", f"{r['v_opt']:.1%}")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=15, color='#f1c40f'), name='Ideal'))
+            st.plotly_chart(fig, use_container_width=True)
+            fig_p = go.Figure(data=[go.Pie(labels=r['sel'], values=r['w'], hole=.4)]); st.plotly_chart(fig_p, use_container_width=True)
+            
             st.markdown("### 🔮 Monte Carlo")
             c1, c2, c3 = st.columns(3)
             ini = c1.number_input("Inicial", 10000.0); aport = c2.number_input("Mensal", 1000.0); ano = c3.number_input("Anos", 10)
             if st.button("Simular"):
                 o, m, p, s, t = monte_carlo(r['r_opt'], r['v_opt'], ini, aport, int(ano), 0.05)
                 f = go.Figure(); x = np.linspace(0, int(ano), s+1)
-                f.add_trace(go.Scatter(x=x, y=t, name='Teórico', line=dict(color='orange', dash='dot'))); f.add_trace(go.Scatter(x=x, y=m, name='Esperado', line=dict(color='green'))); f.add_trace(go.Scatter(x=x, y=p, name='Pessimista', line=dict(color='#abebc6', width=0), fill='tonexty')); f.add_trace(go.Scatter(x=x, y=usr_mid, mode='lines', name='Atual (Esperado)', line=dict(color='black', dash='dash')))
-                f.update_layout(title="Crescimento Patrimonial", xaxis_title="Anos", yaxis_title="Patrimônio", template="plotly_white", yaxis=dict(tickprefix="R$ ", tickformat=",.0f"))
+                f.add_trace(go.Scatter(x=x, y=t, name='Teórico', line=dict(color='orange', dash='dot'))); f.add_trace(go.Scatter(x=x, y=m, name='Esperado', line=dict(color='green')))
                 st.plotly_chart(f, use_container_width=True)
-                st.success(f"💰 **Final Estimado:** R$ {m[-1]:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
 elif opcao == "📚 Catálogo (Estudos)":
     st.title("📚 Diário de Valuation")
+    
+    # SÓ MOSTRA O FORMULÁRIO SE FOR ADMIN
     if st.session_state.admin_logged:
         if 'temp_p' not in st.session_state: st.session_state.temp_p = {}
         with st.expander("📝 **[ADMIN] Novo Estudo**", expanded=True):
@@ -443,7 +389,8 @@ elif opcao == "📚 Catálogo (Estudos)":
                 if tik:
                     salvar_no_db({"Data": datetime.now().strftime("%d/%m/%Y"), "Ticker": tik, "Preço Justo": val_j, "Cotação Ref": val_c, "Método": met, "Tese": tese, "Premissas": st.session_state.temp_p.copy()})
                     st.session_state.temp_p = {}; st.rerun()
-    else: st.info("Modo Leitura (Público).")
+    else:
+        st.info("Modo Leitura (Público).")
 
     ldb = carregar_dados_db()
     if ldb:
@@ -462,8 +409,4 @@ elif opcao == "📚 Catálogo (Estudos)":
                 st.divider()
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Ref", f"R$ {pr:.2f}"); k2.metric("Live", f"R$ {cur:.2f}"); k3.metric("Justo", f"R$ {pj:.2f}"); k4.metric("Upside", f"{up:.1f}%")
-                with st.expander("Ver Tese"): 
-                    st.info(item.get('Tese'))
-                    if p: st.table(pd.DataFrame(list(p.items()), columns=['Item', 'Valor']))
-                    fig = go.Figure(go.Indicator(mode="gauge+number+delta", value=cur, domain={'x': [0, 1], 'y': [0, 1]}, title={'text': "Margem"}, delta={'reference': pj}, gauge={'axis': {'range': [None, pj*1.5]}, 'bar': {'color': "gray"}, 'steps': [{'range': [0, pj], 'color': "#d4edda"}], 'threshold': {'line': {'color': "green", 'width': 4}, 'thickness': 0.75, 'value': pj}}))
-                    fig.update_layout(height=200, margin=dict(l=20, r=20, t=30, b=20)); st.plotly_chart(fig, use_container_width=True)
+                with st.expander("Ver Tese"): st.info(item.get('Tese')); st.write(p)
