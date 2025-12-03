@@ -48,7 +48,7 @@ def check_password():
 if not check_password(): st.stop()
 
 # ==========================================
-# 1. FUNÇÕES DE APOIO
+# 1. FUNÇÕES DE APOIO (DB E CALCULOS)
 # ==========================================
 
 # --- GOOGLE SHEETS ---
@@ -160,29 +160,33 @@ def extrair_dados_valuation(ticker, tb, tg, tc):
         return {"Ticker": ticker.upper(), "Preço Atual": p, "DPA Est.": dpa, "Graham": g, "Margem Graham": cm(g), "Bazin": b, "Margem Bazin": cm(b), "Gordon": go, "Margem Gordon": cm(go), "Historico_Raw": []}
     except: return None
 
-# --- MARKOWITZ ---
+# --- MARKOWITZ (Lógica V28 Restaurada) ---
 def calcular_cagr(serie, fator_anual):
+    # Lógica original da V28 (Retorno Simples Anualizado)
+    # Para bater com o modelo V28, usamos a média simples * fator
     if len(serie) < 1: return 0.0
-    retorno_total = (1 + serie).prod()
-    n = len(serie)
-    if fator_anual == 1: return retorno_total - 1
-    expoente = fator_anual / n
-    try: return (retorno_total ** expoente) - 1
-    except: return 0.0
+    return serie.mean() * fator_anual
 
 def gerar_tabela_performance(df_retornos, fator_anual):
     stats = []
     for ativo in df_retornos.columns:
         serie = df_retornos[ativo]
-        ret_total = calcular_cagr(serie, fator_anual)
+        # Retorno Total (Simples acumulado para display)
+        ret_total = (1 + serie).prod() - 1
+        # Média Anualizada (Para Otimização - Lógica V28)
+        media_anual = calcular_cagr(serie, fator_anual)
+        
         p_12m = 12 if fator_anual == 12 else 252
         p_24m = 24 if fator_anual == 12 else 504
-        ret_12m = calcular_cagr(serie.tail(p_12m), fator_anual) if len(serie) >= p_12m else np.nan
-        ret_24m = calcular_cagr(serie.tail(p_24m), fator_anual) if len(serie) >= p_24m else np.nan
-        ret_abs = (1 + serie).prod() - 1
+        
+        # Cálculo simples para 12/24 meses para display
+        ret_12m = (1 + serie.tail(p_12m)).prod() - 1 if len(serie) >= p_12m else np.nan
+        ret_24m = (1 + serie.tail(p_24m)).prod() - 1 if len(serie) >= p_24m else np.nan
+        
         stats.append({
-            "Ativo": ativo, "Retorno Total do Arquivo": ret_abs * 100,
-            "Média Histórica (Total)": ret_total * 100,
+            "Ativo": ativo,
+            "Retorno Total do Arquivo": ret_total * 100,
+            "Média Anualizada (Input Modelo)": media_anual * 100, 
             "Últimos 12 Meses": ret_12m * 100 if not np.isnan(ret_12m) else None,
             "Últimos 24 Meses": ret_24m * 100 if not np.isnan(ret_24m) else None
         })
@@ -267,10 +271,12 @@ elif opcao == "📊 Valuation (Ações)":
     with st.container(border=True):
         st.subheader("1. Parâmetros de Entrada")
         c1, c2, c3 = st.columns(3)
-        tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.08, format="%.2f", help="TMA")
-        tg = c2.number_input("Taxa Gordon", 0.01, 0.50, 0.12, format="%.2f", help="Custo Capital")
-        tc = c3.number_input("Cresc. g", 0.00, 0.10, 0.02, format="%.2f", help="Crescimento perpétuo")
+        # Inputs com Tooltips (RESTAURADO)
+        tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.08, format="%.2f", help="Taxa Mínima de Atratividade (TMA). Comum: 0.06 a 0.10.")
+        tg = c2.number_input("Taxa Desconto - Gordon", 0.01, 0.50, 0.12, format="%.2f", help="Custo de Capital (Retorno Exigido).")
+        tc = c3.number_input("Cresc. g", 0.00, 0.10, 0.02, format="%.2f", help="Crescimento perpétuo (g). Deve ser < PIB.")
         tickers = st.text_area("Tickers", "BBAS3, ITSA4, WEG3")
+    
     if st.button("🔍 Calcular", type="primary"):
         lista = [t.strip() for t in tickers.split(',') if t.strip()]
         res = []; bar = st.progress(0)
@@ -283,15 +289,24 @@ elif opcao == "📊 Valuation (Ações)":
             st.markdown("### Resultados")
             fig = go.Figure()
             l = df['Ticker'].tolist()
+            # Gráfico Restaurado com 4 Barras
             fig.add_trace(go.Bar(x=l, y=df['Preço Atual'], name='Atual', marker_color='#95a5a6', text=df['Preço Atual'], texttemplate='R$ %{y:.2f}'))
             fig.add_trace(go.Bar(x=l, y=df['Graham'], name='Graham', marker_color='#27ae60', text=df['Graham'], texttemplate='R$ %{y:.2f}'))
             fig.add_trace(go.Bar(x=l, y=df['Bazin'], name='Bazin', marker_color='#2980b9', text=df['Bazin'], texttemplate='R$ %{y:.2f}'))
             fig.add_trace(go.Bar(x=l, y=df['Gordon'], name='Gordon', marker_color='#9b59b6', text=df['Gordon'], texttemplate='R$ %{y:.2f}'))
             fig.update_layout(barmode='group', template="plotly_white", height=400)
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Tabela Formatada (Restaurada)
             st.dataframe(df, column_config={"Preço Atual": st.column_config.NumberColumn(format="R$ %.2f"), "DPA Est.": st.column_config.NumberColumn(format="R$ %.4f"), "Graham": st.column_config.NumberColumn(format="R$ %.2f"), "Bazin": st.column_config.NumberColumn(format="R$ %.2f"), "Gordon": st.column_config.NumberColumn(format="R$ %.2f"), "Margem Graham": st.column_config.NumberColumn(format="%.2f%%"), "Margem Bazin": st.column_config.NumberColumn(format="%.2f%%"), "Margem Gordon": st.column_config.NumberColumn(format="%.2f%%")}, use_container_width=True, hide_index=True)
+            
+            with st.expander("📂 Histórico de Dividendos"):
+                if res_dividendos:
+                    df_divs = pd.DataFrame(res_dividendos).set_index("Ticker")
+                    st.dataframe(df_divs.style.format("R$ {:.4f}", na_rep="-"), use_container_width=True)
         else: st.warning("Sem dados.")
 
+# --- MARKOWITZ (V28 RESTAURADA) ---
 elif opcao == "📉 Otimização (Markowitz)":
     st.title("📉 Otimizador de Carteira")
     with st.container(border=True):
@@ -307,11 +322,13 @@ elif opcao == "📉 Otimização (Markowitz)":
     if arquivo:
         try:
             df = pd.read_excel(arquivo)
+            # Lógica V28: Tratamento de Data e Ordenação
             first_col = df.iloc[:, 0]
             if not np.issubdtype(first_col.dtype, np.number):
                 df = df.set_index(df.columns[0])
                 try: df.index = pd.to_datetime(df.index, dayfirst=True)
                 except: df.index = pd.to_datetime(df.index, dayfirst=True, errors='coerce')
+            
             df.sort_index(ascending=True, inplace=True)
             
             col_num = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -325,22 +342,24 @@ elif opcao == "📉 Otimização (Markowitz)":
             else: 
                 retornos = df_ativos
             
+            # TABELA 1: Performance Detalhada (Igual V28)
             df_perf = gerar_tabela_performance(retornos, fator_anual)
             st.markdown("---")
-            st.warning("⚠️ **Raio-X:** Confira se o retorno faz sentido.")
+            st.info("Confira os retornos calculados abaixo:")
             st.dataframe(df_perf.set_index("Ativo").style.format("{:.2f}%", na_rep="-"), use_container_width=True)
             
             cov_matrix = retornos.cov() * fator_anual
-            media_historica = df_perf["Média Histórica (Total)"].values / 100
+            media_historica = df_perf["Média Anualizada (Input Modelo)"].values / 100 # Ajuste V28
             
         except Exception as e: 
             st.error(f"Erro no arquivo: {e}")
             st.stop()
         
         with st.container(border=True):
+            # TABELA 2: Configuração (Com Peso Atual)
             df_c = pd.DataFrame({
-                "Ativo": sel, 
-                "Peso Atual (%)": [round(100/len(sel), 2)] * len(sel),
+                "Ativo": sel,
+                "Peso Atual (%)": [round(100/len(sel), 2)] * len(sel), # Coluna Restaurada
                 "Visão (%)": [round(m*100, 2) for m in media_historica], 
                 "Min (%)": [0.0]*len(sel), 
                 "Max (%)": [100.0]*len(sel)
@@ -350,10 +369,12 @@ elif opcao == "📉 Otimização (Markowitz)":
         
         if st.button("🚀 Otimizar", type="primary"):
             visoes = cfg["Visão (%)"].values/100
+            # Pega os pesos digitados pelo usuário (ou padrão equiponderado)
             pesos_user = cfg["Peso Atual (%)"].values/100
             
-            # Normaliza pesos user
-            if abs(sum(pesos_user) - 1.0) > 0.01: pesos_user = pesos_user / sum(pesos_user)
+            # Normalização de segurança
+            if abs(sum(pesos_user) - 1.0) > 0.01: 
+                 pesos_user = pesos_user / sum(pesos_user)
 
             b = [(r["Min (%)"]/100, r["Max (%)"]/100) for _, r in cfg.iterrows()]
             n = len(sel); w0 = np.ones(n)/n
@@ -364,8 +385,8 @@ elif opcao == "📉 Otimização (Markowitz)":
             try:
                 res = minimize(min_sp, w0, args=(visoes, cov_matrix, rf), method='SLSQP', bounds=b, constraints=cons)
                 w = res.x; r_opt, v_opt, s_opt = calc_portfolio(w, visoes, cov_matrix, rf)
+                # Calcula performance da Carteira Atual usando os pesos da tabela
                 r_u, v_u, _ = calc_portfolio(pesos_user, visoes, cov_matrix, rf)
-                
                 st.session_state.otimizacao_feita = True
                 st.session_state.res = {
                     'sel': sel, 
