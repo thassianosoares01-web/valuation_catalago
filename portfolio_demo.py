@@ -174,7 +174,7 @@ def extrair_dados_valuation(ticker, tb, tg, tc):
         
         if d_data:
             dpa = d_data["media"]
-            historico_raw = d_data["historico"] # Lista de tuplas (Ano, Valor)
+            historico_raw = d_data["historico"]
         else:
             dpa = (float(g_tit("DY").replace(',','.').replace('%',''))/100)*p
             historico_raw = []
@@ -198,30 +198,16 @@ def extrair_dados_valuation(ticker, tb, tg, tc):
 
 
 ################################################################################
-# MÓDULO: MARKOWITZ (LÓGICA V28 RESTAURADA) (Início)
+# MÓDULO: MARKOWITZ (LÓGICA E VISUAL ATUALIZADOS) (Início)
 ################################################################################
-def calcular_retornos_detalhados(df_retornos):
-    # Retorno médio anualizado simples (V28 Original)
-    retornos_anuais = df_retornos.mean() * 12
-    return retornos_anuais
-
 def gerar_tabela_performance_v28(df_retornos, fator_anual):
-    # Essa é a lógica exata da V28 para a tabela
     stats = []
     for ativo in df_retornos.columns:
         serie = df_retornos[ativo]
-        
-        # 1. Retorno Total do Arquivo
         ret_total_arquivo = (1 + serie).prod() - 1
-        
-        # 2. Média Histórica Total (Anualizada)
-        # Na V28, usávamos a média simples anualizada para inputs
         media_hist = serie.mean() * fator_anual
-        
-        # 3. Janelas (12m e 24m) - Cálculo composto
         p_12m = 12 if fator_anual == 12 else 252
         p_24m = 24 if fator_anual == 12 else 504
-        
         ret_12m = (1 + serie.tail(p_12m)).prod() - 1 if len(serie) >= p_12m else np.nan
         ret_24m = (1 + serie.tail(p_24m)).prod() - 1 if len(serie) >= p_24m else np.nan
 
@@ -240,34 +226,41 @@ def calc_portfolio(w, r, cov, rf):
     sp = (rp - rf) / vp if vp > 0 else 0
     return rp, vp, sp
 
-def min_sp(w, r, c, rf): return -calc_portfolio(w, r, c, rf)[2]
-def min_vol(w, r, c, rf): return calc_portfolio(w, r, c, rf)[1]
+# Funções objetivo para otimização
+def min_sp_obj(w, r, c, rf): return -calc_portfolio(w, r, c, rf)[2] # Maximizar Sharpe (Minimizar negativo)
+def min_vol_obj(w, r, c, rf): return calc_portfolio(w, r, c, rf)[1] # Minimizar Volatilidade
 
 def monte_carlo(mu_anual, vol_anual, valor_ini, aporte_mensal_ini, anos, inflacao_anual, n_sim=500):
-    # Lógica V28 (Simples e direta)
     dt = 1/12
     steps = int(anos * 12)
     caminhos = np.zeros((n_sim, steps + 1))
     caminhos[:, 0] = valor_ini
-    
     aporte_atual = aporte_mensal_ini
-    
     for t in range(1, steps + 1):
         if t > 1 and (t-1) % 12 == 0:
             aporte_atual *= (1 + inflacao_anual)
-        
         z = np.random.normal(0, 1, n_sim)
         drift = (mu_anual - 0.5 * vol_anual**2) * dt
         diffusion = vol_anual * np.sqrt(dt) * z
         caminhos[:, t] = caminhos[:, t-1] * np.exp(drift + diffusion) + aporte_atual
-        
     return np.percentile(caminhos, 95, axis=0), np.percentile(caminhos, 50, axis=0), np.percentile(caminhos, 5, axis=0), steps
 
-def gerar_hover_text(nome, ret, vol, sharpe, pesos, ativos):
-    t = f"<b>{nome}</b><br>Ret: {ret:.1%}<br>Vol: {vol:.1%}<br>Sharpe: {sharpe:.2f}<br>Alocação:<br>"
-    for i, a in enumerate(ativos): 
-        if pesos[i]>0.01: t+=f"{a}: {pesos[i]:.1%}<br>"
-    return t
+# --- NOVA FUNÇÃO DE TOOLTIP (HOVER) ---
+def gerar_tooltip_detalhado(nome_ponto, ret, vol, shp, pesos, ativos):
+    """Gera o tooltip HTML no formato solicitado."""
+    tooltip = f"<b>{nome_ponto}</b><br>"
+    tooltip += f"Ret: {ret:.1%}<br>"
+    tooltip += f"Vol: {vol:.1%}<br>"
+    tooltip += f"Shp: {shp:.2f}<br><br>"
+    tooltip += "<b>Alocação:</b><br>"
+    
+    # Cria lista de (peso, ativo) e ordena decrescente pelo peso
+    alocacao = sorted(zip(pesos, ativos), key=lambda x: x[0], reverse=True)
+    
+    for peso, ativo in alocacao:
+        if peso >= 0.001: # Mostra apenas alocações relevantes (>0.1%)
+            tooltip += f"{ativo}: {peso:.1%}<br>"
+    return tooltip
 ################################################################################
 # MÓDULO: MARKOWITZ (Fim)
 ################################################################################
@@ -338,16 +331,15 @@ elif opcao == "📊 Valuation (Ações)":
     if st.button("🔍 Calcular", type="primary"):
         lista = [t.strip() for t in tickers.split(',') if t.strip()]
         res_valuation = []
-        res_historicos = {} # Dicionário para guardar os históricos
+        res_historicos = {}
         
         bar = st.progress(0)
         for i, t in enumerate(lista):
             d = extrair_dados_valuation(t, tb, tg, tc)
             if d:
-                # Separa o histórico para não poluir a tabela principal
                 hist = d.pop("Historico_Raw") 
                 res_valuation.append(d)
-                res_historicos[d["Ticker"]] = hist # Salva para usar na tabela de dividendos
+                res_historicos[d["Ticker"]] = hist
             bar.progress((i+1)/len(lista))
             
         if res_valuation:
@@ -364,12 +356,10 @@ elif opcao == "📊 Valuation (Ações)":
             
             st.dataframe(df, column_config={"Preço Atual": st.column_config.NumberColumn(format="R$ %.2f"), "DPA Est.": st.column_config.NumberColumn(format="R$ %.4f"), "Graham": st.column_config.NumberColumn(format="R$ %.2f"), "Bazin": st.column_config.NumberColumn(format="R$ %.2f"), "Gordon": st.column_config.NumberColumn(format="R$ %.2f"), "Margem Graham": st.column_config.NumberColumn(format="%.2f%%"), "Margem Bazin": st.column_config.NumberColumn(format="%.2f%%"), "Margem Gordon": st.column_config.NumberColumn(format="%.2f%%")}, use_container_width=True, hide_index=True)
             
-            # --- TABELA DE DIVIDENDOS NO ESTILO V39 (HORIZONTAL) ---
             with st.expander("📂 Histórico de Dividendos (Ano a Ano)"):
                 if res_historicos:
                     rows = []
                     all_years = set()
-                    
                     for ticker, hist_list in res_historicos.items():
                         if hist_list:
                             row = {"Ticker": ticker}
@@ -379,9 +369,7 @@ elif opcao == "📊 Valuation (Ações)":
                                 row[str(ano)] = valor
                                 all_years.add(str(ano))
                             rows.append(row)
-                    
                     if rows:
-                        # Ordena colunas
                         cols_order = ["Ticker", "Média Usada"] + sorted(list(all_years), reverse=True)
                         df_hist_final = pd.DataFrame(rows).reindex(columns=cols_order)
                         st.dataframe(df_hist_final.style.format(precision=4, na_rep="-"), use_container_width=True)
@@ -389,7 +377,7 @@ elif opcao == "📊 Valuation (Ações)":
 
 
 ################################################################################
-# INTERFACE: MARKOWITZ (Visual Ajustado)
+# INTERFACE: MARKOWITZ (Visual Profissional Ajustado)
 ################################################################################
 elif opcao == "📉 Otimização (Markowitz)":
     st.title("📉 Otimizador de Carteira")
@@ -408,7 +396,6 @@ elif opcao == "📉 Otimização (Markowitz)":
     if arquivo:
         try:
             df = pd.read_excel(arquivo)
-            # --- LÓGICA V28 DE LEITURA E DATA ---
             first_col = df.iloc[:, 0]
             if not np.issubdtype(first_col.dtype, np.number):
                 df = df.set_index(df.columns[0])
@@ -416,7 +403,6 @@ elif opcao == "📉 Otimização (Markowitz)":
                 except: df.index = pd.to_datetime(df.index, dayfirst=True, errors='coerce')
             
             df.sort_index(ascending=True, inplace=True)
-            
             col_num = df.select_dtypes(include=[np.number]).columns.tolist()
             sel = st.multiselect("Ativos:", options=df.columns, default=col_num)
             
@@ -428,7 +414,6 @@ elif opcao == "📉 Otimização (Markowitz)":
             else: 
                 retornos = df_ativos
             
-            # TABELA 1 (Restaurada igual V28 - 4 Colunas)
             df_perf = gerar_tabela_performance_v28(retornos, fator_anual)
             st.markdown("---")
             st.warning("⚠️ **Raio-X:** Confira se o retorno faz sentido.")
@@ -442,10 +427,9 @@ elif opcao == "📉 Otimização (Markowitz)":
             st.stop()
         
         with st.container(border=True):
-            # TABELA 2 (Restaurada com Coluna de Peso Atual)
             df_c = pd.DataFrame({
                 "Ativo": sel, 
-                "Peso Atual (%)": [round(100/len(sel), 2)] * len(sel), # Coluna V28
+                "Peso Atual (%)": [round(100/len(sel), 2)] * len(sel),
                 "Visão (%)": [round(m*100, 2) for m in media_historica], 
                 "Min (%)": [0.0]*len(sel), 
                 "Max (%)": [100.0]*len(sel)
@@ -456,96 +440,138 @@ elif opcao == "📉 Otimização (Markowitz)":
         if st.button("🚀 Otimizar", type="primary"):
             visoes = cfg["Visão (%)"].values/100
             pesos_user = cfg["Peso Atual (%)"].values/100
-            
-            if abs(sum(pesos_user) - 1.0) > 0.01: 
-                 pesos_user = pesos_user / sum(pesos_user)
-
+            if abs(sum(pesos_user) - 1.0) > 0.01: pesos_user = pesos_user / sum(pesos_user)
             b = [(r["Min (%)"]/100, r["Max (%)"]/100) for _, r in cfg.iterrows()]
             n = len(sel); w0 = np.ones(n)/n
             cons = ({'type': 'eq', 'fun': lambda x: np.sum(x)-1})
             
             try:
-                res = minimize(min_sp, w0, args=(visoes, cov_matrix, rf), method='SLSQP', bounds=b, constraints=cons)
-                w = res.x; r_opt, v_opt, s_opt = calc_portfolio(w, visoes, cov_matrix, rf)
-                r_u, v_u, _ = calc_portfolio(pesos_user, visoes, cov_matrix, rf)
+                # 1. Otimização de Máximo Sharpe (Com Limites)
+                res_sharpe = minimize(min_sp_obj, w0, args=(visoes, cov_matrix, rf), method='SLSQP', bounds=b, constraints=cons)
+                w_sharpe = res_sharpe.x
+                r_sh, v_sh, s_sh = calc_portfolio(w_sharpe, visoes, cov_matrix, rf)
+
+                # 2. Otimização de Mínima Volatilidade (Com Limites) - NECESSÁRIO PARA O GRÁFICO
+                res_min_vol = minimize(min_vol_obj, w0, args=(visoes, cov_matrix, rf), method='SLSQP', bounds=b, constraints=cons)
+                w_min_vol = res_min_vol.x
+                r_mv, v_mv, s_mv = calc_portfolio(w_min_vol, visoes, cov_matrix, rf)
+                
+                # 3. Carteira Atual do Usuário
+                r_u, v_u, s_u = calc_portfolio(pesos_user, visoes, cov_matrix, rf)
+                
                 st.session_state.otimizacao_feita = True
                 st.session_state.res = {
-                    'sel': sel, 
-                    'r_opt': r_opt, 'v_opt': v_opt, 's_opt': s_opt, 'w': w, 
-                    'v': visoes, 'cov': cov_matrix, 'rf': rf, 
-                    'r_u': r_u, 'v_u': v_u, 'pesos_user': pesos_user,
-                    'bounds': b 
+                    'sel': sel, 'v': visoes, 'cov': cov_matrix, 'rf': rf, 'bounds': b,
+                    'sharpe_pt': (r_sh, v_sh, s_sh, w_sharpe), # Ponto Sharpe
+                    'minvol_pt': (r_mv, v_mv, s_mv, w_min_vol), # Ponto Min Vol
+                    'user_pt': (r_u, v_u, s_u, pesos_user) # Ponto Usuário
                 }
-            except: st.error("Erro matemático.")
+            except Exception as e: st.error(f"Erro matemático na otimização: {e}")
 
         if st.session_state.otimizacao_feita:
-            r = st.session_state.res
-            st.markdown("---"); st.markdown("### 🏆 Resultado")
+            r_data = st.session_state.res
+            (r_sh, v_sh, s_sh, w_sharpe) = r_data['sharpe_pt']
+            (r_mv, v_mv, s_mv, w_min_vol) = r_data['minvol_pt']
+            (r_u, v_u, s_u, pesos_user) = r_data['user_pt']
+
+            st.markdown("---"); st.markdown("### 🏆 Resultado (Melhor Sharpe)")
             col1, col2, col3 = st.columns(3)
-            col1.metric("Sharpe", f"{r['s_opt']:.2f}"); col2.metric("Retorno Esp.", f"{r['r_opt']:.1%}"); col3.metric("Risco", f"{r['v_opt']:.1%}")
+            col1.metric("Sharpe Máx", f"{s_sh:.2f}"); col2.metric("Retorno Esp.", f"{r_sh:.1%}"); col3.metric("Risco (Vol)", f"{v_sh:.1%}")
+            
             c_chart1, c_chart2 = st.columns([2,1])
             with c_chart1:
-                max_ret = max(r['v']); 
-                if max_ret < r['r_opt']: max_ret = r['r_opt']*1.1
-                if max_ret > 2.0: max_ret = 2.0
-                tgs = np.linspace(0, max_ret, 40)
+                # GERAÇÃO DA CURVA DA FRONTEIRA (Entre Min Vol e Max Retorno possível)
+                max_ret_possible = max(r_data['v']) if max(r_data['v']) > r_sh else r_sh * 1.2
+                # Garante que o target começa no retorno da mínima volatilidade para a curva ficar correta
+                tgs = np.linspace(r_mv, max_ret_possible, 50) 
                 vx, vy, txt = [], [], []
-                
                 for t in tgs:
-                    res = minimize(min_vol, np.ones(len(r['sel']))/len(r['sel']), args=(r['v'], r['cov'], r['rf']), method='SLSQP', bounds=r['bounds'], constraints=({'type':'eq','fun':lambda x:np.sum(x)-1}, {'type':'eq','fun':lambda x:calc_portfolio(x,r['v'],r['cov'],r['rf'])[0]-t}))
+                    # Restrição adicional: retorno deve ser igual ao target 't'
+                    cons_curve = ({'type':'eq','fun':lambda x:np.sum(x)-1}, 
+                                  {'type':'eq','fun':lambda x:calc_portfolio(x,r_data['v'],r_data['cov'],r_data['rf'])[0]-t})
+                    res = minimize(min_vol_obj, w0, args=(r_data['v'], r_data['cov'], r_data['rf']), method='SLSQP', bounds=r_data['bounds'], constraints=cons_curve)
                     if res.success:
-                        ret, vol, _ = calc_portfolio(res.x, r['v'], r['cov'], r['rf'])
-                        vx.append(vol); vy.append(ret); txt.append(gerar_hover_text("Curva", ret, vol, _, res.x, r['sel']))
+                        ret_c, vol_c, shp_c = calc_portfolio(res.x, r_data['v'], r_data['cov'], r_data['rf'])
+                        vx.append(vol_c); vy.append(ret_c)
+                        txt.append(gerar_tooltip_detalhado("Fronteira", ret_c, vol_c, shp_c, res.x, r_data['sel']))
                 
-                # --- INÍCIO DO AJUSTE VISUAL DO GRÁFICO ---
+                # --- INÍCIO DA CONSTRUÇÃO DO GRÁFICO ESTILIZADO ---
                 fig = go.Figure()
-                # Linha da Fronteira (Azul padrão, nome ajustado)
-                fig.add_trace(go.Scatter(x=vx, y=vy, mode='lines', name='Fronteira Eficiente', line=dict(color='blue', width=2), hoverinfo='text', text=txt))
-                # Ponto de Melhor Sharpe (Amarelo/Dourado com borda preta)
-                fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=14, color='gold', line=dict(width=1, color='black')), name='Melhor Sharpe'))
-                # Ponto da Carteira Atual (X preto)
-                fig.add_trace(go.Scatter(x=[r['v_u']], y=[r['r_u']], mode='markers', marker=dict(size=12, color='black', symbol='x'), name='Atual'))
+
+                # 1. Linha da Fronteira (Vermelha, grossa)
+                fig.add_trace(go.Scatter(
+                    x=vx, y=vy, mode='lines', 
+                    name='Fronteira (Seus Limites)', 
+                    line=dict(color='red', width=2.5), 
+                    hoverinfo='text', text=txt
+                ))
+
+                # 2. Marcador: Melhor Sharpe (Estrela Dourada com borda preta)
+                tooltip_sh = gerar_tooltip_detalhado("Ótima (Com Limites)", r_sh, v_sh, s_sh, w_sharpe, r_data['sel'])
+                fig.add_trace(go.Scatter(
+                    x=[v_sh], y=[r_sh], mode='markers', 
+                    name='Ótima (Com Limites)',
+                    marker=dict(symbol='star', size=18, color='gold', line=dict(width=1, color='black')),
+                    hoverinfo='text', text=tooltip_sh
+                ))
+
+                # 3. Marcador: Mínima Volatilidade (Círculo Azul com borda preta)
+                tooltip_mv = gerar_tooltip_detalhado("Mín Vol (Com Limites)", r_mv, v_mv, s_mv, w_min_vol, r_data['sel'])
+                fig.add_trace(go.Scatter(
+                    x=[v_mv], y=[r_mv], mode='markers', 
+                    name='Mín Vol (Com Limites)',
+                    marker=dict(symbol='circle', size=15, color='blue', line=dict(width=1, color='black')),
+                    hoverinfo='text', text=tooltip_mv
+                ))
+
+                # 4. Marcador: Carteira Atual (X Preto)
+                tooltip_u = gerar_tooltip_detalhado("Sua Atual", r_u, v_u, s_u, pesos_user, r_data['sel'])
+                fig.add_trace(go.Scatter(
+                    x=[v_u], y=[r_u], mode='markers', 
+                    name='Sua Atual',
+                    marker=dict(symbol='x', size=15, color='black'),
+                    hoverinfo='text', text=tooltip_u
+                ))
                 
-                # Layout ajustado (Títulos, Eixos e Legenda Externa)
+                # Layout Profissional (Fundo branco, grade cinza, legenda lateral)
                 fig.update_layout(
-                    title="2. Fronteira Eficiente",
+                    title="Comparativo Risco x Retorno",
                     xaxis_title="Risco (Volatilidade)",
                     yaxis_title="Retorno Esperado",
                     template="plotly_white",
-                    xaxis=dict(tickformat=".1%"),
-                    yaxis=dict(tickformat=".1%"),
-                    height=500,
+                    height=550,
+                    xaxis=dict(tickformat=".0%", showgrid=True, gridcolor='#f0f0f0'),
+                    yaxis=dict(tickformat=".0%", showgrid=True, gridcolor='#f0f0f0'),
                     legend=dict(
-                        yanchor="top",
-                        y=0.99,
-                        xanchor="left",
-                        x=1.02 # Posiciona a legenda fora do gráfico à direita
-                    )
+                        yanchor="top", y=1,
+                        xanchor="left", x=1.02, # Legenda fora do gráfico à direita
+                        bordercolor="#e0e0e0", borderwidth=1
+                    ),
+                    hoverlabel=dict(bgcolor="white", font_size=13, font_family="Arial") # Estilo do Tooltip
                 )
-                # --- FIM DO AJUSTE VISUAL DO GRÁFICO ---
+                # --- FIM DO GRÁFICO ESTILIZADO ---
 
                 st.plotly_chart(fig, use_container_width=True)
+            
             with c_chart2:
-                fig_p = go.Figure(data=[go.Pie(labels=r['sel'], values=r['w'], hole=.4)])
-                fig_p.update_layout(title="Alocação Ideal", height=400, showlegend=False)
+                fig_p = go.Figure(data=[go.Pie(labels=r_data['sel'], values=w_sharpe, hole=.4, marker=dict(colors=['#0077b5', '#27ae60', '#e74c3c', '#f1c40f', '#8e44ad']))])
+                fig_p.update_layout(title="Alocação Ideal (Sharpe)", height=400, showlegend=True, legend=dict(x=0.1, y=-0.1, orientation="h"))
                 st.plotly_chart(fig_p, use_container_width=True)
             
-            st.markdown("### 🔮 Monte Carlo")
+            st.markdown("### 🔮 Monte Carlo (Projeção da Carteira Ótima)")
             c1, c2, c3 = st.columns(3)
-            ini = c1.number_input("Inicial", 10000.0); aport = c2.number_input("Mensal", 1000.0); ano = c3.number_input("Anos", 10)
-            if st.button("Simular"):
-                o, m, p, s, t = monte_carlo(r['r_opt'], r['v_opt'], ini, aport, int(ano), 0.05)
-                f = go.Figure(); x = np.linspace(0, int(ano), s+1)
-                f.add_trace(go.Scatter(x=x, y=t, name='Teórico', line=dict(color='orange', dash='dot')))
-                f.add_trace(go.Scatter(x=x, y=m, name='Esperado', line=dict(color='green')))
-                f.add_trace(go.Scatter(x=x, y=p, name='Pessimista', line=dict(color='#abebc6', width=0), fill='tonexty'))
-                # Adicionando a linha da carteira atual no Monte Carlo também
-                usr_mid, _, _, _ = monte_carlo(r['r_u'], r['v_u'], ini, aport, int(ano), 0.05)
-                f.add_trace(go.Scatter(x=x, y=usr_mid, mode='lines', name='Atual (Esperado)', line=dict(color='black', dash='dash')))
+            ini = c1.number_input("Inicial (R$)", 10000.0); aport = c2.number_input("Aporte Mensal (R$)", 1000.0); ano = c3.number_input("Anos", 10)
+            if st.button("Simular Projeção"):
+                # Usa os dados da carteira de Máximo Sharpe para a simulação
+                o, m, p, s, t = monte_carlo(r_sh, v_sh, ini, aport, int(ano), 0.045) # Inflação travada em 4.5% para exemplo
+                f = go.Figure(); x_axis = np.linspace(0, int(ano), s+1)
+                f.add_trace(go.Scatter(x=x_axis, y=m, name='Esperado (Mediana)', line=dict(color='#27ae60', width=3)))
+                f.add_trace(go.Scatter(x=x_axis, y=o, name='Otimista (95%)', line=dict(color='#abebc6', width=1), dash='dot'))
+                f.add_trace(go.Scatter(x=x_axis, y=p, name='Pessimista (5%)', line=dict(color='#abebc6', width=1), fill='tonexty'))
                 
-                f.update_layout(title="Crescimento Patrimonial", xaxis_title="Anos", yaxis_title="Patrimônio", template="plotly_white", yaxis=dict(tickprefix="R$ ", tickformat=",.0f"))
+                f.update_layout(title="Evolução Patrimonial Estimada", xaxis_title="Anos", yaxis_title="Patrimônio Acumulado", template="plotly_white", yaxis=dict(tickprefix="R$ ", tickformat=",.0f"), hovermode="x unified")
                 st.plotly_chart(f, use_container_width=True)
-                st.success(f"💰 **Final Estimado:** R$ {m[-1]:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                st.success(f"💰 **Patrimônio Esperado em {ano} anos:** R$ {m[-1]:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
 
 ################################################################################
