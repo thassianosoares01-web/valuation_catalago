@@ -15,7 +15,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import yfinance as yf
 
 # ==========================================
-# 0. CONFIGURAÇÃO E ESTILO
+# 0. CONFIGURAÇÃO
 # ==========================================
 st.set_page_config(page_title="Asset Manager Pro", layout="wide", page_icon="📈")
 
@@ -48,7 +48,7 @@ def check_password():
 if not check_password(): st.stop()
 
 # ==========================================
-# 1. FUNÇÕES DE APOIO (DB E CALCULOS)
+# 1. FUNÇÕES DE APOIO
 # ==========================================
 
 # --- GOOGLE SHEETS ---
@@ -160,7 +160,7 @@ def extrair_dados_valuation(ticker, tb, tg, tc):
         return {"Ticker": ticker.upper(), "Preço Atual": p, "DPA Est.": dpa, "Graham": g, "Margem Graham": cm(g), "Bazin": b, "Margem Bazin": cm(b), "Gordon": go, "Margem Gordon": cm(go), "Historico_Raw": []}
     except: return None
 
-# --- MARKOWITZ (VOLTANDO PARA A LÓGICA DA V28) ---
+# --- MARKOWITZ (Lógica V28 Restaurada) ---
 def calcular_cagr(serie, fator_anual):
     if len(serie) < 1: return 0.0
     retorno_total = (1 + serie).prod()
@@ -179,7 +179,6 @@ def gerar_tabela_performance(df_retornos, fator_anual):
         p_24m = 24 if fator_anual == 12 else 504
         ret_12m = calcular_cagr(serie.tail(p_12m), fator_anual) if len(serie) >= p_12m else np.nan
         ret_24m = calcular_cagr(serie.tail(p_24m), fator_anual) if len(serie) >= p_24m else np.nan
-        # Tira-teima (Retorno Absoluto Simples)
         ret_abs = (1 + serie).prod() - 1
         stats.append({
             "Ativo": ativo, "Retorno Total (Arquivo)": ret_abs * 100,
@@ -256,25 +255,15 @@ if opcao == "🏠 Início":
     st.divider()
     col1, col2, col3 = st.columns(3)
     with col1:
-        with st.container(border=True):
-            st.markdown("### 📊 Valuation")
-            st.markdown("Graham, Bazin e Gordon.")
-            st.info("Acesse no Menu Lateral")
+        st.info("📊 **Valuation:** Graham, Bazin e Gordon.")
     with col2:
-        with st.container(border=True):
-            st.markdown("### 📉 Otimização")
-            st.markdown("Markowitz e Monte Carlo.")
-            st.info("Acesse no Menu Lateral")
+        st.info("📉 **Otimização:** Markowitz e Monte Carlo.")
     with col3:
-        with st.container(border=True):
-            st.markdown("### 📚 Catálogo")
-            st.markdown("Banco de dados de teses.")
-            st.info("Acesse no Menu Lateral")
+        st.info("📚 **Catálogo:** Banco de teses (Google Sheets).")
 
 elif opcao == "📊 Valuation (Ações)":
     st.title("📊 Valuation Fundamentalista")
     with st.container(border=True):
-        st.subheader("1. Parâmetros de Entrada")
         c1, c2, c3 = st.columns(3)
         tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.08, format="%.2f", help="TMA")
         tg = c2.number_input("Taxa Gordon", 0.01, 0.50, 0.12, format="%.2f", help="Custo Capital")
@@ -301,7 +290,7 @@ elif opcao == "📊 Valuation (Ações)":
             st.dataframe(df, column_config={"Preço Atual": st.column_config.NumberColumn(format="R$ %.2f"), "DPA Est.": st.column_config.NumberColumn(format="R$ %.4f"), "Graham": st.column_config.NumberColumn(format="R$ %.2f"), "Bazin": st.column_config.NumberColumn(format="R$ %.2f"), "Gordon": st.column_config.NumberColumn(format="R$ %.2f"), "Margem Graham": st.column_config.NumberColumn(format="%.2f%%"), "Margem Bazin": st.column_config.NumberColumn(format="%.2f%%"), "Margem Gordon": st.column_config.NumberColumn(format="%.2f%%")}, use_container_width=True, hide_index=True)
         else: st.warning("Sem dados.")
 
-# --- BLOCO MARKOWITZ (RESTORE V28) ---
+# --- MARKOWITZ (LÓGICA V28 RESTAURADA) ---
 elif opcao == "📉 Otimização (Markowitz)":
     st.title("📉 Otimizador de Carteira")
     with st.container(border=True):
@@ -311,26 +300,30 @@ elif opcao == "📉 Otimização (Markowitz)":
             tipo_dados = st.radio("Conteúdo:", ["Preços Históricos (R$)", "Retornos Já Calculados (%)"])
             freq_option = st.selectbox("Freq:", ["Diário (252)", "Mensal (12)"])
             fator = 252 if freq_option.startswith("Diário") else 12
-    
     if 'otimizacao_feita' not in st.session_state: st.session_state.otimizacao_feita = False
     
     if arquivo:
         try:
             df = pd.read_excel(arquivo)
+            # --- LÓGICA V28 DE LEITURA ---
             first_col = df.iloc[:, 0]
             if not np.issubdtype(first_col.dtype, np.number):
                 df = df.set_index(df.columns[0])
                 try: df.index = pd.to_datetime(df.index, dayfirst=True)
                 except: df.index = pd.to_datetime(df.index, dayfirst=True, errors='coerce')
             
-            df.sort_index(ascending=True, inplace=True)
+            df.sort_index(ascending=True, inplace=True) # Ordenação Crítica
+            
             col_num = df.select_dtypes(include=[np.number]).columns.tolist()
             sel = st.multiselect("Ativos:", options=df.columns, default=col_num)
+            
             if len(sel)<2: st.error("Selecione 2+ ativos."); st.stop()
             
             df_ativos = df[sel].dropna()
-            if tipo_dados.startswith("Preços"): retornos = df_ativos.pct_change().dropna()
-            else: retornos = df_ativos
+            if tipo_dados.startswith("Preços"): 
+                retornos = df_ativos.pct_change().dropna()
+            else: 
+                retornos = df_ativos
             
             df_perf = gerar_tabela_performance(retornos, fator_anual)
             st.markdown("---")
@@ -340,7 +333,9 @@ elif opcao == "📉 Otimização (Markowitz)":
             cov_matrix = retornos.cov() * fator_anual
             media_historica = df_perf["Média Histórica (Total)"].values
             
-        except: st.error("Erro no arquivo."); st.stop()
+        except Exception as e: 
+            st.error(f"Erro no arquivo: {e}")
+            st.stop()
         
         with st.container(border=True):
             df_c = pd.DataFrame({"Ativo": sel, "Visão (%)": [round(m, 2) for m in media_historica], "Min (%)": [0.0]*len(sel), "Max (%)": [100.0]*len(sel)})
@@ -356,14 +351,14 @@ elif opcao == "📉 Otimização (Markowitz)":
             try:
                 res = minimize(min_sp, w0, args=(visoes, cov_matrix, rf), method='SLSQP', bounds=b, constraints=cons)
                 w = res.x; r_opt, v_opt, s_opt = calc_portfolio(w, visoes, cov_matrix, rf)
-                r_u, v_u, _ = calc_portfolio(pesos_user, visoes, cov_matrix, rf)
+                r_u, v_u, _ = calc_portfolio(pesos_user, visoes, cov, rf)
                 st.session_state.otimizacao_feita = True
                 st.session_state.res = {'sel': sel, 'r_opt': r_opt, 'v_opt': v_opt, 's_opt': s_opt, 'w': w, 'v': visoes, 'cov': cov_matrix, 'r_u': r_u, 'v_u': v_u}
             except: st.error("Erro matemático.")
 
         if st.session_state.otimizacao_feita:
             r = st.session_state.res
-            st.markdown("---")
+            st.markdown("---"); st.markdown("### 🏆 Resultado")
             col1, col2, col3 = st.columns(3)
             col1.metric("Sharpe", f"{r['s_opt']:.2f}"); col2.metric("Retorno Esp.", f"{r['r_opt']:.1%}"); col3.metric("Risco", f"{r['v_opt']:.1%}")
             c1, c2 = st.columns([2,1])
@@ -423,7 +418,8 @@ elif opcao == "📚 Catálogo (Estudos)":
                 if tik:
                     salvar_no_db({"Data": datetime.now().strftime("%d/%m/%Y"), "Ticker": tik, "Preço Justo": val_j, "Cotação Ref": val_c, "Método": met, "Tese": tese, "Premissas": st.session_state.temp_p.copy()})
                     st.session_state.temp_p = {}; st.rerun()
-    else: st.info("Modo Leitura (Público).")
+    else:
+        st.info("Modo Leitura (Público).")
 
     ldb = carregar_dados_db()
     if ldb:
