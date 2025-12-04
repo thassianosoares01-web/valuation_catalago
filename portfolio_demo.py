@@ -412,7 +412,7 @@ if opcao == "🏠 Início":
             
             with c_video:
                 st.video(URL_VIDEO)
-                st.caption("Tutorial rápido sobre os modelos de Graham e Markowitz.")
+                st.caption("Tutorial rápido sobre as funcionalidades")
     
     st.divider() # Linha divisória elegante
     
@@ -802,6 +802,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
