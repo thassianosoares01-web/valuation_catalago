@@ -398,7 +398,7 @@ if opcao == "🏠 Início":
             st.markdown(f"""
             Automatize sua análise de preço justo.<br><br>
             Aplique instantaneamente as metodologias de **Graham, Bazin e Gordon** para identificar oportunidades.<br><br>
-            <span style='{cta_style}'>Acessar Ferramenta ➝</span>
+            
             """, unsafe_allow_html=True)
     
     with col2:
@@ -773,6 +773,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
