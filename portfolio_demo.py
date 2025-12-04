@@ -294,7 +294,10 @@ st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2910/2910312.png", widt
 st.sidebar.title("Asset Manager Pro")
 st.sidebar.markdown("---")
 # ADICIONEI A NOVA OPÇÃO AQUI
-opcao = st.sidebar.radio("Navegação:", ["🏠 Início", "📊 Valuation (Ações)", "📉 Otimização (Markowitz)", "📚 Catálogo (Google Sheets)"])
+opcao = st.sidebar.radio(
+    "Navegação:", 
+    ["🏠 Início", "📊 Valuation (Ações)", "📉 Otimização (Markowitz)", "📚 Wall de Análises", "🔐 Área Admin"]
+)
 
 # LÓGICA DO MENU LATERAL DO CÓDIGO 2 (SÓ APARECE SE SELECIONADO)
 if opcao == "📚 Catálogo (Google Sheets)":
@@ -670,4 +673,5 @@ elif opcao == "📚 Catálogo (Google Sheets)":
                         ))
                         fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
                         st.plotly_chart(fig, use_container_width=True)
+
 
