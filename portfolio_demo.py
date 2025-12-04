@@ -407,7 +407,7 @@ if opcao == "🏠 Início":
             st.markdown(f"""
             Otimização de Portfólio.<br><br>
             Utilize a **Fronteira Eficiente** para analisar o risco-retorno e realizar **rebalanceamentos precisos**.<br><br>
-            <span style='{cta_style}'>Otimizar Carteira ➝</span>
+           
             """, unsafe_allow_html=True)
     
     with col3:
@@ -416,7 +416,7 @@ if opcao == "🏠 Início":
             st.markdown(f"""
             Biblioteca de Estudos.<br><br>
             Acesse valuations e teses para fins educacionais. Explore métricas como **DCF, Múltiplos e modelos híbridos**.<br><br>
-            <span style='{cta_style}'>Explorar Estudos ➝</span>
+            
             """, unsafe_allow_html=True)
 
 
@@ -773,6 +773,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
