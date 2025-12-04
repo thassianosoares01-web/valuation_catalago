@@ -20,6 +20,63 @@ try:
 except ImportError:
     HAS_GOOGLE = False
 
+
+# ==============================================================================
+# FUNÇÕES MATEMÁTICAS DE MARKOWITZ (COLE ISSO ANTES DA INTERFACE)
+# ==============================================================================
+def calcular_cagr(serie, fator_anual):
+    if len(serie) < 1: return 0.0
+    retorno_total = (1 + serie).prod()
+    n = len(serie)
+    if fator_anual == 1: return retorno_total - 1
+    expoente = fator_anual / n
+    try: return (retorno_total ** expoente) - 1
+    except: return 0.0
+
+def gerar_tabela_performance(df_retornos, fator_anual):
+    stats = []
+    for ativo in df_retornos.columns:
+        serie = df_retornos[ativo]
+        ret_total = calcular_cagr(serie, fator_anual)
+        p_12m = 12 if fator_anual == 12 else 252
+        p_24m = 24 if fator_anual == 12 else 504
+        ret_12m = calcular_cagr(serie.tail(p_12m), fator_anual) if len(serie) >= p_12m else np.nan
+        ret_24m = calcular_cagr(serie.tail(p_24m), fator_anual) if len(serie) >= p_24m else np.nan
+        ret_abs = (1 + serie).prod() - 1
+        stats.append({
+            "Ativo": ativo, "Retorno Total do Arquivo": ret_abs * 100,
+            "Média Histórica (Total)": ret_total * 100,
+            "Últimos 12 Meses": ret_12m * 100 if not np.isnan(ret_12m) else None,
+            "Últimos 24 Meses": ret_24m * 100 if not np.isnan(ret_24m) else None
+        })
+    return pd.DataFrame(stats)
+
+def calc_portfolio(w, r, cov, rf):
+    rp = np.sum(w * r); vp = np.sqrt(np.dot(w.T, np.dot(cov, w)))
+    return rp, vp, (rp - rf) / vp if vp > 0 else 0
+
+def min_sp(w, r, c, rf): return -calc_portfolio(w, r, c, rf)[2]
+def min_vol(w, r, c, rf): return calc_portfolio(w, r, c, rf)[1]
+
+def monte_carlo(mu, vol, ini, aporte, anos, inf, n=500):
+    if np.isnan(mu) or np.isnan(vol): return [0]*12, [0]*12, [0]*12, 12, [0]*12
+    dt = 1/12; steps = int(anos * 12)
+    cam = np.zeros((n, steps+1)); cam[:,0] = ini
+    teorico = np.zeros(steps+1); teorico[0] = ini
+    taxa_m = (1+mu)**(1/12)-1; aporte_atual = aporte
+    for t in range(1, steps+1):
+        if t>1 and (t-1)%12==0: aporte_atual *= (1+inf)
+        z = np.random.normal(0, 1, n)
+        cam[:,t] = cam[:,t-1] * np.exp((mu-0.5*vol**2)*dt + vol*np.sqrt(dt)*z) + aporte_atual
+        teorico[t] = teorico[t-1]*(1+taxa_m) + aporte_atual
+    return np.percentile(cam, 95, axis=0), np.percentile(cam, 50, axis=0), np.percentile(cam, 5, axis=0), steps, teorico
+
+def gerar_hover_text(nome, ret, vol, sharpe, pesos, ativos):
+    t = f"<b>{nome}</b><br>Ret: {ret:.1%}<br>Vol: {vol:.1%}<br>Sharpe: {sharpe:.2f}<br>Alocação:<br>"
+    for i, a in enumerate(ativos): 
+        if pesos[i]>0.01: t+=f"{a}: {pesos[i]:.1%}<br>"
+    return t
+
 # ==============================================================================
 # 0. CONFIGURAÇÃO GERAL E ESTILO (GLOBAL)
 # ==============================================================================
@@ -592,5 +649,6 @@ elif opcao == "📚 Catálogo (Estudos)":
                     if p: st.table(pd.DataFrame(list(p.items()), columns=['Item', 'Valor']))
                     fig = go.Figure(go.Indicator(mode="gauge+number+delta", value=cur, domain={'x': [0, 1], 'y': [0, 1]}, title={'text': "Margem"}, delta={'reference': pj}, gauge={'axis': {'range': [None, pj*1.5]}, 'bar': {'color': "gray"}, 'steps': [{'range': [0, pj], 'color': "#d4edda"}], 'threshold': {'line': {'color': "green", 'width': 4}, 'thickness': 0.75, 'value': pj}}))
                     fig.update_layout(height=200, margin=dict(l=20, r=20, t=30, b=20)); st.plotly_chart(fig, use_container_width=True)
+
 
 
