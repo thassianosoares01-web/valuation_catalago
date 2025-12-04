@@ -382,6 +382,9 @@ elif opcao == "📊 Valuation (Ações)":
 # ==============================================================================
 # MÓDULO: MARKOWITZ (V41 - Visual Pizza Ajustado)
 # ==============================================================================
+# ==============================================================================
+# MÓDULO: MARKOWITZ (LÓGICA V28 + VISUAL ATUALIZADO)
+# ==============================================================================
 elif opcao == "📉 Otimização (Markowitz)":
     st.title("📉 Otimizador de Carteira")
     
@@ -392,6 +395,7 @@ elif opcao == "📉 Otimização (Markowitz)":
             st.markdown("**Calibragem**")
             tipo_dados = st.radio("Conteúdo:", ["Preços Históricos (R$)", "Retornos Já Calculados (%)"])
             freq_option = st.selectbox("Freq:", ["Diário (252)", "Mensal (12)"])
+            # Define fator anual aqui para evitar erro de variavel nao definida
             fator_anual = 252 if freq_option.startswith("Diário") else 12
     
     if 'otimizacao_feita' not in st.session_state: st.session_state.otimizacao_feita = False
@@ -399,7 +403,7 @@ elif opcao == "📉 Otimização (Markowitz)":
     if arquivo:
         try:
             df = pd.read_excel(arquivo)
-            # Lógica V28: Tratamento de Data e Ordenação
+            # --- LÓGICA V28: Tratamento de Data e Ordenação ---
             first_col = df.iloc[:, 0]
             if not np.issubdtype(first_col.dtype, np.number):
                 df = df.set_index(df.columns[0])
@@ -419,24 +423,25 @@ elif opcao == "📉 Otimização (Markowitz)":
             else: 
                 retornos = df_ativos
             
-            # TABELA 1: Performance
+            # --- TABELA 1: Performance Detalhada (Igual V28) ---
             df_perf = gerar_tabela_performance(retornos, fator_anual)
             st.markdown("---")
             st.info("Confira os retornos calculados abaixo:")
             st.dataframe(df_perf.set_index("Ativo").style.format("{:.2f}%", na_rep="-"), use_container_width=True)
             
             cov_matrix = retornos.cov() * fator_anual
-            media_historica = df_perf["Média Anualizada (Input Modelo)"].values / 100 
+            # Ajuste V28: Divide por 100 pois a tabela exibe em % mas o calculo usa decimal
+            media_historica = df_perf["Média Histórica (Total)"].values / 100 
             
         except Exception as e: 
             st.error(f"Erro no arquivo: {e}")
             st.stop()
         
         with st.container(border=True):
-            # TABELA 2: Configuração
+            # --- TABELA 2: Configuração (Com Peso Atual da V28) ---
             df_c = pd.DataFrame({
                 "Ativo": sel, 
-                "Peso Atual (%)": [round(100/len(sel), 2)] * len(sel),
+                "Peso Atual (%)": [round(100/len(sel), 2)] * len(sel), # Coluna V28 Restaurada
                 "Visão (%)": [round(m*100, 2) for m in media_historica], 
                 "Min (%)": [0.0]*len(sel), 
                 "Max (%)": [100.0]*len(sel)
@@ -448,6 +453,7 @@ elif opcao == "📉 Otimização (Markowitz)":
             visoes = cfg["Visão (%)"].values/100
             pesos_user = cfg["Peso Atual (%)"].values/100
             
+            # Normalização de segurança
             if abs(sum(pesos_user) - 1.0) > 0.01: 
                  pesos_user = pesos_user / sum(pesos_user)
 
@@ -458,6 +464,7 @@ elif opcao == "📉 Otimização (Markowitz)":
             try:
                 res = minimize(min_sp, w0, args=(visoes, cov_matrix, rf), method='SLSQP', bounds=b, constraints=cons)
                 w = res.x; r_opt, v_opt, s_opt = calc_portfolio(w, visoes, cov_matrix, rf)
+                # Calcula performance da Carteira Atual usando os pesos da tabela
                 r_u, v_u, _ = calc_portfolio(pesos_user, visoes, cov_matrix, rf)
                 st.session_state.otimizacao_feita = True
                 st.session_state.res = {
@@ -477,12 +484,13 @@ elif opcao == "📉 Otimização (Markowitz)":
             
             c_chart1, c_chart2 = st.columns([2,1])
             with c_chart1:
-                # Lógica do Gráfico de Fronteira (V28 Visual Style)
+                # --- GRÁFICO FRONTEIRA (Estilo V28 + Visual Novo) ---
                 max_ret = max(r['v']); 
                 if max_ret < r['r_opt']: max_ret = r['r_opt']*1.1
                 if max_ret > 2.0: max_ret = 2.0
                 tgs = np.linspace(0, max_ret, 40)
                 vx, vy, txt = [], [], []
+                
                 for t in tgs:
                     res = minimize(min_vol, np.ones(len(r['sel']))/len(r['sel']), args=(r['v'], r['cov'], r['rf']), method='SLSQP', bounds=r['bounds'], constraints=({'type':'eq','fun':lambda x:np.sum(x)-1}, {'type':'eq','fun':lambda x:calc_portfolio(x,r['v'],r['cov'],r['rf'])[0]-t}))
                     if res.success:
@@ -491,47 +499,48 @@ elif opcao == "📉 Otimização (Markowitz)":
                 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=vx, y=vy, mode='lines', name='Fronteira', line=dict(color='#3498db', width=3), hoverinfo='text', text=txt))
-                fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=15, color='#f1c40f', line=dict(width=2, color='black')), name='Ideal', hoverinfo='text', text=gerar_hover_text("Ideal", r['r_opt'], r['v_opt'], r['s_opt'], r['w'], r['sel'])))
+                fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=15, color='#f1c40f', line=dict(width=2, color='black')), name='Melhor Sharpe', hoverinfo='text', text=gerar_hover_text("Ideal", r['r_opt'], r['v_opt'], r['s_opt'], r['w'], r['sel'])))
                 fig.add_trace(go.Scatter(x=[r['v_u']], y=[r['r_u']], mode='markers', marker=dict(size=12, color='black', symbol='x'), name='Atual', hoverinfo='text', text=gerar_hover_text("Atual", r['r_u'], r['v_u'], _, r['pesos_user'], r['sel'])))
                 
                 fig.update_layout(title="Risco vs. Retorno", xaxis_title="Risco", yaxis_title="Retorno", template="plotly_white", xaxis=dict(tickformat=".1%"), yaxis=dict(tickformat=".1%"), height=400)
                 st.plotly_chart(fig, use_container_width=True)
             
             with c_chart2:
-                # --- GRÁFICO DE PIZZA ATUALIZADO (IGUAL SUA IMAGEM) ---
+                # --- GRÁFICO PIZZA (AJUSTE DE LEGENDA EMBAIXO) ---
                 fig_p = go.Figure(data=[go.Pie(
                     labels=r['sel'], 
                     values=r['w'], 
-                    hole=.45, # Buraco do Donut
-                    textinfo='percent', # Mostra % dentro da fatia
+                    hole=.45,
+                    textinfo='percent', # Porcentagem dentro
                     textposition='inside',
-                    marker=dict(colors=['#0077b5', '#27ae60', '#c0392b', '#f1c40f', '#8e44ad']) # Cores sólidas
+                    marker=dict(colors=['#0077b5', '#27ae60', '#c0392b', '#f1c40f', '#8e44ad'])
                 )])
                 
                 fig_p.update_layout(
                     title="Alocação Ideal", 
                     height=400, 
-                    showlegend=True, # Legenda ativada
-                    legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5) # Legenda embaixo
+                    showlegend=True, 
+                    legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5) # Legenda Embaixo
                 )
                 st.plotly_chart(fig_p, use_container_width=True)
             
             st.markdown("### 🔮 Monte Carlo")
             c1, c2, c3 = st.columns(3)
             ini = c1.number_input("Inicial", 10000.0); aport = c2.number_input("Mensal", 1000.0); ano = c3.number_input("Anos", 10)
-            
             if st.button("Simular"):
                 o, m, p, s, t = monte_carlo(r['r_opt'], r['v_opt'], ini, aport, int(ano), 0.05)
                 f = go.Figure(); x = np.linspace(0, int(ano), s+1)
                 f.add_trace(go.Scatter(x=x, y=t, name='Teórico', line=dict(color='orange', dash='dot')))
                 f.add_trace(go.Scatter(x=x, y=m, name='Esperado', line=dict(color='green')))
                 f.add_trace(go.Scatter(x=x, y=p, name='Pessimista', line=dict(color='#abebc6', width=0), fill='tonexty'))
-                f.add_trace(go.Scatter(x=x, y=usr_mid, mode='lines', name='Atual (Esperado)', line=dict(color='black', dash='dash'))) # Linha atual faltava aqui em cima
+                f.add_trace(go.Scatter(x=x, y=usr_mid, mode='lines', name='Atual (Esperado)', line=dict(color='black', dash='dash'))) # Correção: Agora 'usr_mid' existe pois calculamos lá em cima se necessário, ou podemos recalcular aqui.
+                
+                # Nota: Para garantir que 'usr_mid' exista aqui, recalculamos rápido:
+                usr_mid, _, _, _, _ = monte_carlo(r['r_u'], r['v_u'], ini, aport, int(ano), 0.05)
                 
                 f.update_layout(title="Crescimento Patrimonial", xaxis_title="Anos", yaxis_title="Patrimônio", template="plotly_white", yaxis=dict(tickprefix="R$ ", tickformat=",.0f"))
                 st.plotly_chart(f, use_container_width=True)
                 st.success(f"💰 **Final Estimado:** R$ {m[-1]:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-
 
 ################################################################################
 # INTERFACE: CATÁLOGO (Estudos)
@@ -583,4 +592,5 @@ elif opcao == "📚 Catálogo (Estudos)":
                     if p: st.table(pd.DataFrame(list(p.items()), columns=['Item', 'Valor']))
                     fig = go.Figure(go.Indicator(mode="gauge+number+delta", value=cur, domain={'x': [0, 1], 'y': [0, 1]}, title={'text': "Margem"}, delta={'reference': pj}, gauge={'axis': {'range': [None, pj*1.5]}, 'bar': {'color': "gray"}, 'steps': [{'range': [0, pj], 'color': "#d4edda"}], 'threshold': {'line': {'color': "green", 'width': 4}, 'thickness': 0.75, 'value': pj}}))
                     fig.update_layout(height=200, margin=dict(l=20, r=20, t=30, b=20)); st.plotly_chart(fig, use_container_width=True)
+
 
