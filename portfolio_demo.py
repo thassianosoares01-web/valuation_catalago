@@ -400,7 +400,7 @@ if opcao == "🏠 Início":
     with col3:
         with st.container(border=True):
             st.subheader("📚 Catálogo")
-            st.markdown("Banco de dados de teses via Google Sheets.")
+            st.markdown("A nossa área de estudos, é utilizada para elaboração de Valuation de empresas utilizando diversas métricas, como DFC, Múltiplos e híbridos, todos os estudos são apenas a título de conhecimento, e não recomendação de compra ou venda.")
 
 elif opcao == "📊 Valuation (Ações)":
     st.title("📊 Valuation Fundamentalista")
@@ -755,6 +755,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
