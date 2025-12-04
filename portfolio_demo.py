@@ -328,57 +328,99 @@ elif opcao == "📊 Valuation (Ações)":
                         st.dataframe(df_hist_final.style.format(precision=4, na_rep="-"), use_container_width=True)
         else: st.warning("Sem dados.")
 
+# ==============================================================================
+# MÓDULO: MARKOWITZ (CORRIGIDO: Nome da Coluna)
+# ==============================================================================
 elif opcao == "📉 Otimização (Markowitz)":
     st.title("📉 Otimizador de Carteira")
+    
     with st.container(border=True):
         c1, c2 = st.columns([2, 1])
         arquivo = c1.file_uploader("Upload Excel", type=['xlsx'])
         with c2:
+            st.markdown("**Calibragem**")
             tipo_dados = st.radio("Conteúdo:", ["Preços Históricos (R$)", "Retornos Já Calculados (%)"])
             freq_option = st.selectbox("Freq:", ["Diário (252)", "Mensal (12)"])
+            # Define fator anual aqui para evitar erro
             fator_anual = 252 if freq_option.startswith("Diário") else 12
+    
     if 'otimizacao_feita' not in st.session_state: st.session_state.otimizacao_feita = False
+    
     if arquivo:
         try:
             df = pd.read_excel(arquivo)
+            # --- LÓGICA V28: Tratamento de Data e Ordenação ---
             first_col = df.iloc[:, 0]
             if not np.issubdtype(first_col.dtype, np.number):
                 df = df.set_index(df.columns[0])
                 try: df.index = pd.to_datetime(df.index, dayfirst=True)
                 except: df.index = pd.to_datetime(df.index, dayfirst=True, errors='coerce')
+            
             df.sort_index(ascending=True, inplace=True)
+            
             col_num = df.select_dtypes(include=[np.number]).columns.tolist()
             sel = st.multiselect("Ativos:", options=df.columns, default=col_num)
+            
             if len(sel)<2: st.error("Selecione 2+ ativos."); st.stop()
+            
             df_ativos = df[sel].dropna()
-            if tipo_dados.startswith("Preços"): retornos = df_ativos.pct_change().dropna()
-            else: retornos = df_ativos
+            if tipo_dados.startswith("Preços"): 
+                retornos = df_ativos.pct_change().dropna()
+            else: 
+                retornos = df_ativos
+            
+            # --- TABELA 1: Performance Detalhada (Igual V28) ---
             df_perf = gerar_tabela_performance(retornos, fator_anual)
             st.markdown("---")
-            st.warning("⚠️ **Raio-X:** Confira se o retorno faz sentido.")
+            st.info("Confira os retornos calculados abaixo:")
             st.dataframe(df_perf.set_index("Ativo").style.format("{:.2f}%", na_rep="-"), use_container_width=True)
+            
             cov_matrix = retornos.cov() * fator_anual
-            media_historica = df_perf["Média Anualizada (Input Modelo)"].values / 100 
-        except Exception as e: st.error(f"Erro no arquivo: {e}"); st.stop()
+            
+            # --- CORREÇÃO DO ERRO AQUI ---
+            # O nome da coluna deve ser idêntico ao gerado na função 'gerar_tabela_performance'
+            media_historica = df_perf["Média Histórica (Total)"].values / 100 
+            
+        except Exception as e: 
+            st.error(f"Erro no arquivo: {e}")
+            st.stop()
         
         with st.container(border=True):
-            df_c = pd.DataFrame({"Ativo": sel, "Peso Atual (%)": [round(100/len(sel), 2)] * len(sel), "Visão (%)": [round(m*100, 2) for m in media_historica], "Min (%)": [0.0]*len(sel), "Max (%)": [100.0]*len(sel)})
+            # --- TABELA 2: Configuração (Com Peso Atual da V28) ---
+            df_c = pd.DataFrame({
+                "Ativo": sel, 
+                "Peso Atual (%)": [round(100/len(sel), 2)] * len(sel), 
+                "Visão (%)": [round(m*100, 2) for m in media_historica], 
+                "Min (%)": [0.0]*len(sel), 
+                "Max (%)": [100.0]*len(sel)
+            })
             cfg = st.data_editor(df_c, num_rows="fixed", hide_index=True, use_container_width=True)
             rf = st.number_input("Risk Free (%)", 10.0)/100
         
         if st.button("🚀 Otimizar", type="primary"):
             visoes = cfg["Visão (%)"].values/100
             pesos_user = cfg["Peso Atual (%)"].values/100
-            if abs(sum(pesos_user) - 1.0) > 0.01: pesos_user = pesos_user / sum(pesos_user)
+            
+            # Normalização de segurança
+            if abs(sum(pesos_user) - 1.0) > 0.01: 
+                 pesos_user = pesos_user / sum(pesos_user)
+
             b = [(r["Min (%)"]/100, r["Max (%)"]/100) for _, r in cfg.iterrows()]
             n = len(sel); w0 = np.ones(n)/n
             cons = ({'type': 'eq', 'fun': lambda x: np.sum(x)-1})
+            
             try:
                 res = minimize(min_sp, w0, args=(visoes, cov_matrix, rf), method='SLSQP', bounds=b, constraints=cons)
                 w = res.x; r_opt, v_opt, s_opt = calc_portfolio(w, visoes, cov_matrix, rf)
                 r_u, v_u, _ = calc_portfolio(pesos_user, visoes, cov_matrix, rf)
                 st.session_state.otimizacao_feita = True
-                st.session_state.res = {'sel': sel, 'r_opt': r_opt, 'v_opt': v_opt, 's_opt': s_opt, 'w': w, 'v': visoes, 'cov': cov_matrix, 'r_u': r_u, 'v_u': v_u, 'pesos_user': pesos_user, 'bounds': b, 'rf': rf}
+                st.session_state.res = {
+                    'sel': sel, 
+                    'r_opt': r_opt, 'v_opt': v_opt, 's_opt': s_opt, 'w': w, 
+                    'v': visoes, 'cov': cov_matrix, 'rf': rf, 
+                    'r_u': r_u, 'v_u': v_u, 'pesos_user': pesos_user,
+                    'bounds': b 
+                }
             except: st.error("Erro matemático.")
 
         if st.session_state.otimizacao_feita:
@@ -386,36 +428,60 @@ elif opcao == "📉 Otimização (Markowitz)":
             st.markdown("---"); st.markdown("### 🏆 Resultado")
             col1, col2, col3 = st.columns(3)
             col1.metric("Sharpe", f"{r['s_opt']:.2f}"); col2.metric("Retorno Esp.", f"{r['r_opt']:.1%}"); col3.metric("Risco", f"{r['v_opt']:.1%}")
+            
             c_chart1, c_chart2 = st.columns([2,1])
             with c_chart1:
+                # --- GRÁFICO FRONTEIRA (Estilo V28 + Visual Novo) ---
                 max_ret = max(r['v']); 
                 if max_ret < r['r_opt']: max_ret = r['r_opt']*1.1
                 if max_ret > 2.0: max_ret = 2.0
                 tgs = np.linspace(0, max_ret, 40)
                 vx, vy, txt = [], [], []
+                
                 for t in tgs:
                     res = minimize(min_vol, np.ones(len(r['sel']))/len(r['sel']), args=(r['v'], r['cov'], r['rf']), method='SLSQP', bounds=r['bounds'], constraints=({'type':'eq','fun':lambda x:np.sum(x)-1}, {'type':'eq','fun':lambda x:calc_portfolio(x,r['v'],r['cov'],r['rf'])[0]-t}))
                     if res.success:
                         ret, vol, _ = calc_portfolio(res.x, r['v'], r['cov'], r['rf'])
                         vx.append(vol); vy.append(ret); txt.append(gerar_hover_text("Curva", ret, vol, _, res.x, r['sel']))
+                
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=vx, y=vy, mode='lines', name='Fronteira', line=dict(color='#3498db', width=3), hoverinfo='text', text=txt))
-                fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=15, color='#f1c40f'), name='Ideal'))
-                fig.add_trace(go.Scatter(x=[r['v_u']], y=[r['r_u']], mode='markers', marker=dict(size=12, color='black', symbol='x'), name='Atual'))
+                fig.add_trace(go.Scatter(x=[r['v_opt']], y=[r['r_opt']], mode='markers', marker=dict(size=15, color='#f1c40f', line=dict(width=2, color='black')), name='Ideal', hoverinfo='text', text=gerar_hover_text("Ideal", r['r_opt'], r['v_opt'], r['s_opt'], r['w'], r['sel'])))
+                fig.add_trace(go.Scatter(x=[r['v_u']], y=[r['r_u']], mode='markers', marker=dict(size=12, color='black', symbol='x'), name='Atual', hoverinfo='text', text=gerar_hover_text("Atual", r['r_u'], r['v_u'], _, r['pesos_user'], r['sel'])))
+                
                 fig.update_layout(title="Risco vs. Retorno", xaxis_title="Risco", yaxis_title="Retorno", template="plotly_white", xaxis=dict(tickformat=".1%"), yaxis=dict(tickformat=".1%"), height=400)
                 st.plotly_chart(fig, use_container_width=True)
+            
             with c_chart2:
-                fig_p = go.Figure(data=[go.Pie(labels=r['sel'], values=r['w'], hole=.4)])
-                fig_p.update_layout(title="Alocação Ideal", height=400, showlegend=False)
+                # --- GRÁFICO PIZZA (Legenda Embaixo) ---
+                fig_p = go.Figure(data=[go.Pie(
+                    labels=r['sel'], 
+                    values=r['w'], 
+                    hole=.45,
+                    textinfo='percent',
+                    textposition='inside',
+                    marker=dict(colors=['#0077b5', '#27ae60', '#c0392b', '#f1c40f', '#8e44ad'])
+                )])
+                
+                fig_p.update_layout(
+                    title="Alocação Ideal", 
+                    height=400, 
+                    showlegend=True, 
+                    legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5)
+                )
                 st.plotly_chart(fig_p, use_container_width=True)
+            
             st.markdown("### 🔮 Monte Carlo")
             c1, c2, c3 = st.columns(3)
             ini = c1.number_input("Inicial", 10000.0); aport = c2.number_input("Mensal", 1000.0); ano = c3.number_input("Anos", 10)
-            inflacao = c4.number_input("Inflação (%)", 5.0, format="%.2f") / 100
             if st.button("Simular"):
-                o, m, p, s, t = monte_carlo(r['r_opt'], r['v_opt'], ini, aport, int(ano), inflacao)
+                o, m, p, s, t = monte_carlo(r['r_opt'], r['v_opt'], ini, aport, int(ano), 0.05)
                 f = go.Figure(); x = np.linspace(0, int(ano), s+1)
-                f.add_trace(go.Scatter(x=x, y=t, name='Teórico', line=dict(color='orange', dash='dot'))); f.add_trace(go.Scatter(x=x, y=m, name='Esperado', line=dict(color='green'))); f.add_trace(go.Scatter(x=x, y=p, name='Pessimista', line=dict(color='#abebc6', width=0), fill='tonexty')); f.add_trace(go.Scatter(x=x, y=usr_mid, mode='lines', name='Atual (Esperado)', line=dict(color='black', dash='dash')))
+                f.add_trace(go.Scatter(x=x, y=t, name='Teórico', line=dict(color='orange', dash='dot')))
+                f.add_trace(go.Scatter(x=x, y=m, name='Esperado', line=dict(color='green')))
+                f.add_trace(go.Scatter(x=x, y=p, name='Pessimista', line=dict(color='#abebc6', width=0), fill='tonexty'))
+                f.add_trace(go.Scatter(x=x, y=usr_mid, mode='lines', name='Atual (Esperado)', line=dict(color='black', dash='dash')))
+                
                 f.update_layout(title="Crescimento Patrimonial", xaxis_title="Anos", yaxis_title="Patrimônio", template="plotly_white", yaxis=dict(tickprefix="R$ ", tickformat=",.0f"))
                 st.plotly_chart(f, use_container_width=True)
                 st.success(f"💰 **Final Estimado:** R$ {m[-1]:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
@@ -465,3 +531,4 @@ elif opcao == "📚 Catálogo (Estudos)":
                     if p: st.table(pd.DataFrame(list(p.items()), columns=['Item', 'Valor']))
                     fig = go.Figure(go.Indicator(mode="gauge+number+delta", value=cur, domain={'x': [0, 1], 'y': [0, 1]}, title={'text': "Margem"}, delta={'reference': pj}, gauge={'axis': {'range': [None, pj*1.5]}, 'bar': {'color': "gray"}, 'steps': [{'range': [0, pj], 'color': "#d4edda"}], 'threshold': {'line': {'color': "green", 'width': 4}, 'thickness': 0.75, 'value': pj}}))
                     fig.update_layout(height=200, margin=dict(l=20, r=20, t=30, b=20)); st.plotly_chart(fig, use_container_width=True)
+
