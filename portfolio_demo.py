@@ -636,3 +636,68 @@ elif opcao == "📚 Wall de Análises":
                         st.table(pd.DataFrame(list(premissas_dict.items()), columns=['Item', 'Valor']))
 
 
+elif opcao == "🔐 Área Admin":
+    st.title("🔐 Gestão de Análises")
+    
+    # SISTEMA SIMPLES DE SENHA
+    senha = st.text_input("Digite a senha de administrador:", type="password")
+    
+    if senha == "1234": # <--- VOCÊ PODE MUDAR SUA SENHA AQUI
+        st.success("Acesso Liberado")
+        
+        # --- BARRA LATERAL (SÓ APARECE SE TIVER SENHA) ---
+        with st.sidebar:
+            st.markdown("---")
+            st.subheader("➕ Novo Cadastro")
+            
+            f_ticker = st.text_input("Ticker", placeholder="PETR4").upper().strip()
+            c1, c2 = st.columns(2)
+            f_cotacao = c1.number_input("Ref. (R$)", 0.0, format="%.2f")
+            f_justo = c2.number_input("Justo (R$)", 0.0, format="%.2f")
+            f_metodo = st.selectbox("Método", ["Graham", "Bazin", "Gordon", "DCF", "Múltiplos"])
+            f_tese = st.text_area("Racional", height=100)
+            
+            st.caption("Premissas (Opcional)")
+            cn1, cn2 = st.columns(2)
+            nk = cn1.text_input("Nome")
+            nv = cn2.text_input("Valor")
+            if st.button("Add Premissa"):
+                st.session_state.temp_premissas[nk] = nv
+                st.rerun()
+            
+            if st.session_state.temp_premissas:
+                st.dataframe(pd.DataFrame(list(st.session_state.temp_premissas.items()), columns=['K','V']), hide_index=True)
+                if st.button("Limpar"): st.session_state.temp_premissas = {}; st.rerun()
+
+            if st.button("💾 SALVAR", type="primary"):
+                novo = {
+                    "Ticker": f_ticker, "Data": datetime.now().strftime("%d/%m/%Y"),
+                    "Preço Justo": f_justo, "Cotação Ref": f_cotacao,
+                    "Método": f_metodo, "Tese": f_tese,
+                    "Premissas": st.session_state.temp_premissas.copy()
+                }
+                if salvar_novo_estudo(novo):
+                    st.session_state.temp_premissas = {}
+                    st.success("Salvo!"); st.rerun()
+
+        # --- LISTA COM PODER DE EXCLUSÃO ---
+        st.markdown("---")
+        lista_db = carregar_dados()
+        if lista_db:
+            st.markdown("### 🗑️ Gerenciar Itens Existentes")
+            for i in range(len(lista_db) - 1, -1, -1):
+                item = lista_db[i]
+                row_number = i + 2
+                
+                with st.container(border=True):
+                    col_info, col_del = st.columns([5, 1])
+                    col_info.markdown(f"**{item['Ticker']}** ({item['Data']}) - {item['Metodo']} | Alvo: R$ {item['Preco_Justo']}")
+                    
+                    if col_del.button("Excluir", key=f"del_admin_{i}"):
+                        deletar_estudo(row_number)
+                        st.rerun()
+        else:
+            st.info("Banco de dados vazio.")
+            
+    elif senha:
+        st.error("Senha incorreta.")
