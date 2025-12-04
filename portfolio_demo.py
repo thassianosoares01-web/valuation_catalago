@@ -702,6 +702,7 @@ elif opcao == "📚 Estudos":
             #try: p_justo = float(str(item['Preco_Justo']).replace("R$", "").replace(",", "."))
             #except: p_justo = 0.0
 
+            # --- FUNÇÃO DE LIMPEZA INTELIGENTE ---
             def limpar_float(valor):
                 # 1. BLINDAGEM: Se já for número (float/int), não mexe! 
                 # Isso impede que 4.5 vire "4.5", perca o ponto e vire 45.
@@ -724,13 +725,14 @@ elif opcao == "📚 Estudos":
                     return float(texto)
                 except:
                     return 0.0
+            # ---------------------------------------
 
             # APLICA A CORREÇÃO AQUI
             try: p_ref = limpar_float(item['Cotacao_Ref'])
-            except: p_ref = 0.0
+            except: p_ref = 0,0
             
             try: p_justo = limpar_float(item['Preco_Justo'])
-            except: p_justo = 0.0
+            except: p_justo = 0,0
 
 
             
@@ -880,6 +882,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
