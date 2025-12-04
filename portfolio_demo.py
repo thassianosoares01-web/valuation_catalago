@@ -693,7 +693,7 @@ elif opcao == "🔐 Área Admin":
                 if f_ticker and f_justo > 0:
                     novo = {
                         "Ticker": f_ticker, "Data": datetime.now().strftime("%d/%m/%Y"),
-                        "Preço Justo": f_justo, "Cotação Ref": f_cotacao,
+                        "Preço de análise": f_justo, "Cotação Ref": f_cotacao,
                         "Método": f_metodo, "Tese": f_tese,
                         "Premissas": st.session_state.temp_premissas.copy()
                     }
@@ -755,4 +755,5 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
