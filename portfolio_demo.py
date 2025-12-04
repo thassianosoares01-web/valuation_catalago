@@ -703,16 +703,27 @@ elif opcao == "📚 Estudos":
             #except: p_justo = 0.0
 
             def limpar_float(valor):
-                if isinstance(valor, (int, float)):
+                # 1. BLINDAGEM: Se já for número (float/int), não mexe! 
+                # Isso impede que 4.5 vire "4.5", perca o ponto e vire 45.
+                if isinstance(valor, (float, int)):
                     return float(valor)
                 
-                # Se for texto, faz a limpeza
                 texto = str(valor).strip().replace("R$", "")
-                if "," in texto and "." in texto: # Caso 1.000,00
+                
+                # 2. LÓGICA DE DECISÃO:
+                if "," in texto:
+                    # Cenário BR (tem vírgula para centavos): Ex: "1.250,50" ou "4,50"
+                    # Removemos o ponto de milhar e trocamos a vírgula por ponto final
                     texto = texto.replace(".", "").replace(",", ".")
-                elif "," in texto: # Caso 10,00
-                    texto = texto.replace(",", ".")
-                return float(texto)
+                else:
+                    # Cenário US/Python (só tem ponto ou nada): Ex: "4.50" ou "1000"
+                    # Não fazemos nada, pois o float() do Python já entende o ponto como decimal
+                    pass 
+
+                try:
+                    return float(texto)
+                except:
+                    return 0.0
 
             # APLICA A CORREÇÃO AQUI
             try: p_ref = limpar_float(item['Cotacao_Ref'])
@@ -869,6 +880,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
