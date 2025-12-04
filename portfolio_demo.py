@@ -468,9 +468,9 @@ elif opcao == "📊 Valuation (Ações)":
     with st.container(border=True):
         st.subheader("1. Parâmetros de Entrada")
         c1, c2, c3 = st.columns(3)
-        tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.06, step=0.01, format="%.2f", help="Taxa Mínima de Atratividade (TMA).")
-        tg = c2.number_input("Taxa Retorno - Gordon", 0.01, 0.50, 0.10, step=0.01, format="%.2f", help="Custo de Capital.")
-        tc = c3.number_input("Taxa Crescimento - Gordon", 0.00, 0.10, 0.03, step=0.01, format="%.2f", help="Crescimento perpétuo (g).")
+        tb = c1.number_input("Taxa Bazin (%)", 0.01, 0.50, 0.06, step=0.01, format="%.2f", help="Taxa Mínima de Atratividade (TMA).")
+        tg = c2.number_input("Taxa Retorno - Gordon (%)", 0.01, 0.50, 0.10, step=0.01, format="%.2f", help="Custo de Capital.")
+        tc = c3.number_input("Taxa Crescimento - Gordon (%)", 0.00, 0.10, 0.03, step=0.01, format="%.2f", help="Crescimento perpétuo (g).")
         
         st.markdown("---")
         
@@ -848,6 +848,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
