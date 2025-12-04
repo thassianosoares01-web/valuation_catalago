@@ -697,11 +697,32 @@ elif opcao == "📚 Estudos":
             except: premissas_dict = {}
 
             # Valores numéricos
-            try: p_ref = float(str(item['Cotacao_Ref']).replace("R$", "").replace(",", "."))
+            #try: p_ref = float(str(item['Cotacao_Ref']).replace("R$", "").replace(",", "."))
+            #except: p_ref = 0.0
+            #try: p_justo = float(str(item['Preco_Justo']).replace("R$", "").replace(",", "."))
+            #except: p_justo = 0.0
+
+            def limpar_float(valor):
+                if isinstance(valor, (int, float)):
+                    return float(valor)
+                
+                # Se for texto, faz a limpeza
+                texto = str(valor).strip().replace("R$", "")
+                if "," in texto and "." in texto: # Caso 1.000,00
+                    texto = texto.replace(".", "").replace(",", ".")
+                elif "," in texto: # Caso 10,00
+                    texto = texto.replace(",", ".")
+                return float(texto)
+
+            # APLICA A CORREÇÃO AQUI
+            try: p_ref = limpar_float(item['Cotacao_Ref'])
             except: p_ref = 0.0
-            try: p_justo = float(str(item['Preco_Justo']).replace("R$", "").replace(",", "."))
+            
+            try: p_justo = limpar_float(item['Preco_Justo'])
             except: p_justo = 0.0
 
+
+            
             # Cotação ao vivo
             live = obter_cotacao_atual(item['Ticker'])
             atual = live if live else p_ref
@@ -848,6 +869,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
