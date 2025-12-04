@@ -85,7 +85,7 @@ def buscar_dividendos_ultimos_5_anos(ticker):
     media = sum([v for _, v in ultimos_5]) / len(ultimos_5)
     return {"media": round(media, 4), "historico": ultimos_5}
 
-def extrair_dados_valuation(ticker, taxa_bazin, taxa_gordon, taxa_crescimento):
+def extrair_dados_valuation(ticker, taxa_bazin, taxa_gordon, taxa_crescimento, div_projetado=None):
     url = f"https://investidor10.com.br/acoes/{ticker.lower()}/"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -93,6 +93,7 @@ def extrair_dados_valuation(ticker, taxa_bazin, taxa_gordon, taxa_crescimento):
         if resposta.status_code != 200: return None
     except: return None
     soup = BeautifulSoup(resposta.text, 'html.parser')
+    
     def get_text(soup, title):
         el = soup.find("span", title=title)
         if el:
@@ -100,32 +101,45 @@ def extrair_dados_valuation(ticker, taxa_bazin, taxa_gordon, taxa_crescimento):
             val = body.find("span") if body else None
             return val.text.strip().replace('%', '').replace(',', '.') if val else "0"
         return "0"
+    
     def get_val_by_label(soup, label):
         el = soup.find(string=re.compile(fr"(?i){label}"))
         if el:
             val = el.find_parent().find_next("div", class_="value")
             return val.span.text.strip().replace('%', '').replace(',', '.') if val else "0"
         return "0"
+    
     try:
         pl = float(get_text(soup, "P/L"))
         dy = float(get_text(soup, "DY"))
         vpa = float(get_val_by_label(soup, "VPA"))
         cotacao = soup.find("div", class_="_card cotacao")
         preco = float(cotacao.find("div", class_="_card-body").span.text.strip().replace("R$", "").replace(",", ".")) if cotacao else 0.0
-        dados_divs = buscar_dividendos_ultimos_5_anos(ticker)
+        
+        # --- BLOCO DE LÓGICA NOVA (DIVIDENDO MANUAL) ---
         historico_raw = []
-        if dados_divs:
-            dpa = dados_divs["media"]
-            historico_raw = dados_divs["historico"]
+        
+        if div_projetado is not None and div_projetado > 0:
+            # Se o usuário digitou um valor, usa ele e ignora o site
+            dpa = div_projetado
         else:
-            dpa = (dy / 100) * preco 
-            historico_raw = []
+            # Se não, busca o histórico normalmente
+            dados_divs = buscar_dividendos_ultimos_5_anos(ticker)
+            if dados_divs:
+                dpa = dados_divs["media"]
+                historico_raw = dados_divs["historico"]
+            else:
+                dpa = (dy / 100) * preco 
+        # -----------------------------------------------
+
         preco_bazin = round(dpa / taxa_bazin, 2) if dpa > 0 else 0
         lpa = round(preco / pl, 2) if pl > 0 else 0
         preco_graham = round(math.sqrt(22.5 * lpa * vpa), 2) if lpa > 0 and vpa > 0 else 0
         taxa_liq = taxa_gordon - taxa_crescimento
         preco_gordon = round(dpa / taxa_liq, 2) if dpa > 0 and taxa_liq > 0 else 0
+        
         def calc_margem(teto): return round(((teto - preco) / preco) * 100, 2) if teto > 0 else 0
+        
         return {
             "Ticker": ticker.upper(), "Preço Atual": preco, "DPA Est.": dpa,
             "Graham": preco_graham, "Margem Graham (%)": calc_margem(preco_graham),
@@ -454,43 +468,75 @@ elif opcao == "📊 Valuation (Ações)":
     with st.container(border=True):
         st.subheader("1. Parâmetros de Entrada")
         c1, c2, c3 = st.columns(3)
-        tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.08, step=0.01, format="%.2f", help="Taxa Mínima de Atratividade (TMA).")
-        tg = c2.number_input("Taxa Desconto - Gordon", 0.01, 0.50, 0.12, step=0.01, format="%.2f", help="Custo de Capital.")
-        tc = c3.number_input("Taxa Crescimento - Gordon", 0.00, 0.10, 0.02, step=0.01, format="%.2f", help="Crescimento perpétuo (g).")
-        tickers = st.text_area("Tickers", "BBAS3, ITSA4, WEG3")
+        tb = c1.number_input("Taxa Bazin (Dec)", 0.01, 0.50, 0.06, step=0.01, format="%.2f", help="Taxa Mínima de Atratividade (TMA).")
+        tg = c2.number_input("Taxa Desconto - Gordon", 0.01, 0.50, 0.10, step=0.01, format="%.2f", help="Custo de Capital.")
+        tc = c3.number_input("Taxa Crescimento - Gordon", 0.00, 0.10, 0.03, step=0.01, format="%.2f", help="Crescimento perpétuo (g).")
+        
+        st.markdown("---")
+        
+        # --- CHECKBOX NOVO ---
+        usar_projecao = st.checkbox("🔮 Usar Dividendo Projetado (Manual)?")
+        
+        lista_tickers = []
+        div_manual_valor = None # Valor padrão (None = buscar na internet)
+
+        if usar_projecao:
+            st.info("Modo Manual: Digite o Ticker e o quanto você espera que ele pague de dividendo no ano.")
+            col_t, col_d = st.columns(2)
+            t_input = col_t.text_input("Ticker do Ativo", "BBAS3").upper().strip()
+            div_manual_valor = col_d.number_input("Dividendo Anual Esperado (R$)", min_value=0.0, value=1.0, step=0.01, format="%.4f")
+            
+            if t_input:
+                lista_tickers = [t_input]
+        else:
+            tickers_text = st.text_area("Tickers (Separados por vírgula)", "BBAS3, ITSA4, WEG3")
+            lista_tickers = [t.strip() for t in tickers_text.split(',') if t.strip()]
+
     if st.button("🔍 Calcular", type="primary"):
-        lista = [t.strip() for t in tickers.split(',') if t.strip()]
         res_valuation = []
         res_dividendos = [] 
-        bar = st.progress(0)
-        for i, tick in enumerate(lista):
-            dados = extrair_dados_valuation(tick, tb, tg, tc)
-            if dados:
-                hist = dados.pop("Historico_Raw") 
-                res_valuation.append(dados)
-                linha_div = {"Ticker": dados["Ticker"], "Média Usada": dados["DPA Est."]}
-                for ano, valor in hist: linha_div[str(ano)] = valor
-                res_dividendos.append(linha_div)
-            bar.progress((i+1)/len(lista))
-        if res_valuation:
-            df = pd.DataFrame(res_valuation)
-            st.markdown("### 🎯 Resultados")
-            tickers_list = df['Ticker'].tolist()
-            fig = go.Figure()
-            fig.add_trace(go.Bar(x=tickers_list, y=df['Preço Atual'], name='Preço Atual', marker_color='#95a5a6', text=df['Preço Atual'], texttemplate='R$ %{y:.2f}'))
-            fig.add_trace(go.Bar(x=tickers_list, y=df['Graham'], name='Graham', marker_color='#27ae60', text=df['Graham'], texttemplate='R$ %{y:.2f}'))
-            fig.add_trace(go.Bar(x=tickers_list, y=df['Bazin'], name='Bazin', marker_color='#2980b9', text=df['Bazin'], texttemplate='R$ %{y:.2f}'))
-            fig.add_trace(go.Bar(x=tickers_list, y=df['Gordon'], name='Gordon', marker_color='#9b59b6', text=df['Gordon'], texttemplate='R$ %{y:.2f}'))
-            fig.update_layout(barmode='group', yaxis_tickprefix="R$ ", template="plotly_white", height=400)
-            st.plotly_chart(fig, use_container_width=True)
-            format_dict = {"Preço Atual": "R$ {:.2f}", "DPA Est.": "R$ {:.4f}", "Graham": "R$ {:.2f}", "Bazin": "R$ {:.2f}", "Gordon": "R$ {:.2f}", "Margem Graham (%)": "{:.2f}%", "Margem Bazin (%)": "{:.2f}%", "Margem Gordon (%)": "{:.2f}%"}
-            cols = {k: v for k, v in format_dict.items() if k in df.columns}
-            st.dataframe(df.style.format(cols), use_container_width=True)
-            with st.expander("📂 Histórico de Dividendos"):
+        
+        if not lista_tickers:
+            st.warning("Insira pelo menos um ticker.")
+        else:
+            bar = st.progress(0)
+            for i, tick in enumerate(lista_tickers):
+                # Passa o valor manual para a função
+                dados = extrair_dados_valuation(tick, tb, tg, tc, div_projetado=div_manual_valor)
+                
+                if dados:
+                    hist = dados.pop("Historico_Raw") 
+                    res_valuation.append(dados)
+                    if hist:
+                        linha_div = {"Ticker": dados["Ticker"], "Média Usada": dados["DPA Est."]}
+                        for ano, valor in hist: linha_div[str(ano)] = valor
+                        res_dividendos.append(linha_div)
+                
+                bar.progress((i+1)/len(lista_tickers))
+            
+            if res_valuation:
+                df = pd.DataFrame(res_valuation)
+                st.markdown("### 🎯 Resultados")
+                
+                tickers_list = df['Ticker'].tolist()
+                fig = go.Figure()
+                fig.add_trace(go.Bar(x=tickers_list, y=df['Preço Atual'], name='Preço Atual', marker_color='#95a5a6', text=df['Preço Atual'], texttemplate='R$ %{y:.2f}'))
+                fig.add_trace(go.Bar(x=tickers_list, y=df['Graham'], name='Graham', marker_color='#27ae60', text=df['Graham'], texttemplate='R$ %{y:.2f}'))
+                fig.add_trace(go.Bar(x=tickers_list, y=df['Bazin'], name='Bazin', marker_color='#2980b9', text=df['Bazin'], texttemplate='R$ %{y:.2f}'))
+                fig.add_trace(go.Bar(x=tickers_list, y=df['Gordon'], name='Gordon', marker_color='#9b59b6', text=df['Gordon'], texttemplate='R$ %{y:.2f}'))
+                
+                fig.update_layout(barmode='group', yaxis_tickprefix="R$ ", template="plotly_white", height=400)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                format_dict = {"Preço Atual": "R$ {:.2f}", "DPA Est.": "R$ {:.4f}", "Graham": "R$ {:.2f}", "Bazin": "R$ {:.2f}", "Gordon": "R$ {:.2f}", "Margem Graham (%)": "{:.2f}%", "Margem Bazin (%)": "{:.2f}%", "Margem Gordon (%)": "{:.2f}%"}
+                cols = {k: v for k, v in format_dict.items() if k in df.columns}
+                st.dataframe(df.style.format(cols), use_container_width=True)
+                
                 if res_dividendos:
-                    df_divs = pd.DataFrame(res_dividendos).set_index("Ticker")
-                    st.dataframe(df_divs.style.format("R$ {:.4f}", na_rep="-"), use_container_width=True)
-        else: st.warning("Nenhum dado encontrado.")
+                    with st.expander("📂 Histórico de Dividendos"):
+                        df_divs = pd.DataFrame(res_dividendos).set_index("Ticker")
+                        st.dataframe(df_divs.style.format("R$ {:.4f}", na_rep="-"), use_container_width=True)
+            else: st.warning("Nenhum dado encontrado.")
 
 elif opcao == "📉 Otimização (Markowitz)":
     st.title("📉 Otimizador de Carteira")
@@ -802,6 +848,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
