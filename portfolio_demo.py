@@ -637,67 +637,117 @@ elif opcao == "📚 Wall de Análises":
 
 
 elif opcao == "🔐 Área Admin":
-    st.title("🔐 Gestão de Análises")
+    st.title("🔐 Painel Administrativo")
     
-    # SISTEMA SIMPLES DE SENHA
-    senha = st.text_input("Digite a senha de administrador:", type="password")
+    # SENHA
+    col_senha, col_vazia = st.columns([1, 2])
+    senha = col_senha.text_input("Digite a senha de administrador:", type="password")
     
-    if senha == "1234": # <--- VOCÊ PODE MUDAR SUA SENHA AQUI
-        st.success("Acesso Liberado")
-        
-        # --- BARRA LATERAL (SÓ APARECE SE TIVER SENHA) ---
-        with st.sidebar:
-            st.markdown("---")
-            st.subheader("➕ Novo Cadastro")
-            
-            f_ticker = st.text_input("Ticker", placeholder="PETR4").upper().strip()
-            c1, c2 = st.columns(2)
-            f_cotacao = c1.number_input("Ref. (R$)", 0.0, format="%.2f")
-            f_justo = c2.number_input("Justo (R$)", 0.0, format="%.2f")
-            f_metodo = st.selectbox("Método", ["Graham", "Bazin", "Gordon", "DCF", "Múltiplos"])
-            f_tese = st.text_area("Racional", height=100)
-            
-            st.caption("Premissas (Opcional)")
-            cn1, cn2 = st.columns(2)
-            nk = cn1.text_input("Nome")
-            nv = cn2.text_input("Valor")
-            if st.button("Add Premissa"):
-                st.session_state.temp_premissas[nk] = nv
-                st.rerun()
-            
-            if st.session_state.temp_premissas:
-                st.dataframe(pd.DataFrame(list(st.session_state.temp_premissas.items()), columns=['K','V']), hide_index=True)
-                if st.button("Limpar"): st.session_state.temp_premissas = {}; st.rerun()
-
-            if st.button("💾 SALVAR", type="primary"):
-                novo = {
-                    "Ticker": f_ticker, "Data": datetime.now().strftime("%d/%m/%Y"),
-                    "Preço Justo": f_justo, "Cotação Ref": f_cotacao,
-                    "Método": f_metodo, "Tese": f_tese,
-                    "Premissas": st.session_state.temp_premissas.copy()
-                }
-                if salvar_novo_estudo(novo):
-                    st.session_state.temp_premissas = {}
-                    st.success("Salvo!"); st.rerun()
-
-        # --- LISTA COM PODER DE EXCLUSÃO ---
+    if senha == "1234": # <--- Mude sua senha aqui se quiser
+        st.success("🔓 Acesso Liberado")
         st.markdown("---")
+
+        # ==========================================
+        # 1. ÁREA DE CADASTRO (CENTRALIZADA)
+        # ==========================================
+        with st.expander("➕ CADASTRAR NOVA ANÁLISE", expanded=True):
+            st.caption("Preencha os dados abaixo para publicar um novo estudo.")
+            
+            # Linha 1: Ticker, Preços e Método
+            c1, c2, c3, c4 = st.columns(4)
+            f_ticker = c1.text_input("Ticker (Ex: VALE3)", placeholder="AAAA4").upper().strip()
+            f_cotacao = c2.number_input("Cotação Ref. (R$)", 0.0, format="%.2f")
+            f_justo = c3.number_input("Preço Justo (R$)", 0.0, format="%.2f")
+            f_metodo = c4.selectbox("Método de Avaliação", ["Graham", "Bazin", "Gordon", "DCF", "Múltiplos", "Híbrido"])
+            
+            # Linha 2: Tese
+            f_tese = st.text_area("Tese de Investimento (Racional)", height=150, placeholder="Escreva aqui os motivos da compra/venda, riscos e gatilhos...")
+            
+            # Linha 3: Premissas
+            st.markdown("###### 🧱 Premissas (Opcional)")
+            cp1, cp2, cp3 = st.columns([2, 2, 1])
+            nk = cp1.text_input("Nome (Ex: WACC)")
+            nv = cp2.text_input("Valor (Ex: 14%)")
+            
+            if cp3.button("Adicionar Premissa"):
+                if nk and nv:
+                    st.session_state.temp_premissas[nk] = nv
+                    st.rerun()
+
+            # Mostra premissas já adicionadas (Tags)
+            if st.session_state.temp_premissas:
+                st.info(f"Itens adicionados: {json.dumps(st.session_state.temp_premissas, ensure_ascii=False)}")
+                if st.button("Limpar Premissas", type="secondary"):
+                    st.session_state.temp_premissas = {}
+                    st.rerun()
+
+            st.markdown("---")
+            
+            # Botão de Salvar Grande
+            col_save_left, col_save_btn, col_save_right = st.columns([1, 2, 1])
+            if col_save_btn.button("💾 PUBLICAR ESTUDO AGORA", type="primary", use_container_width=True):
+                if f_ticker and f_justo > 0:
+                    novo = {
+                        "Ticker": f_ticker, "Data": datetime.now().strftime("%d/%m/%Y"),
+                        "Preço Justo": f_justo, "Cotação Ref": f_cotacao,
+                        "Método": f_metodo, "Tese": f_tese,
+                        "Premissas": st.session_state.temp_premissas.copy()
+                    }
+                    if salvar_novo_estudo(novo):
+                        st.session_state.temp_premissas = {}
+                        st.balloons()
+                        st.success("Estudo publicado com sucesso!")
+                        st.rerun()
+                else:
+                    st.error("Erro: Preencha pelo menos o Ticker e o Preço Justo.")
+
+        # ==========================================
+        # 2. ÁREA DE GESTÃO (LISTA DETALHADA)
+        # ==========================================
+        st.markdown("### 🗂️ Gerenciar Base de Dados")
         lista_db = carregar_dados()
-        if lista_db:
-            st.markdown("### 🗑️ Gerenciar Itens Existentes")
+
+        if not lista_db:
+            st.warning("O banco de dados está vazio.")
+        else:
+            # Loop Inverso para apagar (do mais novo para o mais antigo)
             for i in range(len(lista_db) - 1, -1, -1):
                 item = lista_db[i]
                 row_number = i + 2
                 
+                # Tratamento de dados (Igual ao Wall)
+                try: p_ref = float(str(item['Cotacao_Ref']).replace("R$", "").replace(",", "."))
+                except: p_ref = 0.0
+                try: p_justo = float(str(item['Preco_Justo']).replace("R$", "").replace(",", "."))
+                except: p_justo = 0.0
+                live = obter_cotacao_atual(item['Ticker'])
+                atual = live if live else p_ref
+                lbl = "Ao Vivo" if live else "Ref. Offline"
+                upside = ((p_justo - atual) / atual) * 100 if atual > 0 else 0
+
+                # --- CARD ADMINISTRATIVO ---
                 with st.container(border=True):
-                    col_info, col_del = st.columns([5, 1])
-                    col_info.markdown(f"**{item['Ticker']}** ({item['Data']}) - {item['Metodo']} | Alvo: R$ {item['Preco_Justo']}")
+                    # Cabeçalho com Botão de Apagar
+                    top_c1, top_c2 = st.columns([5, 1])
+                    top_c1.markdown(f"### 🛠️ {item['Ticker']} <span style='font-size:16px; color:gray'>| {item['Metodo']}</span>", unsafe_allow_html=True)
                     
-                    if col_del.button("Excluir", key=f"del_admin_{i}"):
+                    # Botão de Excluir Destacado
+                    if top_c2.button("🗑️ APAGAR", key=f"del_admin_{i}", type="secondary"):
                         deletar_estudo(row_number)
                         st.rerun()
-        else:
-            st.info("Banco de dados vazio.")
-            
+
+                    st.caption(f"Publicado em: {item['Data']}")
+                    
+                    # Métricas Visuais (Para o Admin conferir se está certo)
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Ref", f"R$ {p_ref:.2f}")
+                    m2.metric(lbl, f"R$ {atual:.2f}")
+                    m3.metric("Alvo", f"R$ {p_justo:.2f}")
+                    m4.metric("Upside", f"{upside:+.1f}%")
+
+                    with st.expander("Ver Tese e Detalhes"):
+                        st.write(item['Tese'])
+                        st.json(item['Premissas_JSON'])
+
     elif senha:
-        st.error("Senha incorreta.")
+        st.error("Senha incorreta. Tente novamente.")
