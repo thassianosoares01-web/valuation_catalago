@@ -654,10 +654,14 @@ elif opcao == "🔐 Área Admin":
             st.caption("Preencha os dados abaixo para publicar um novo estudo.")
             
             # Linha 1: Ticker, Preços e Método
+            # Linha 1: Ticker, Preços e Método
             c1, c2, c3, c4 = st.columns(4)
             f_ticker = c1.text_input("Ticker (Ex: VALE3)", placeholder="AAAA4").upper().strip()
-            f_cotacao = c2.number_input("Cotação Ref. (R$)", 0.0, format="%.2f")
-            f_justo = c3.number_input("Preço Justo (R$)", 0.0, format="%.2f")
+            
+            # AQUI ESTÁ A CORREÇÃO: Adicionei step=0.01
+            f_cotacao = c2.number_input("Cotação Ref. (R$)", min_value=0.0, step=0.01, format="%.2f")
+            f_justo = c3.number_input("Preço Justo (R$)", min_value=0.0, step=0.01, format="%.2f")
+            
             f_metodo = c4.selectbox("Método de Avaliação", ["Graham", "Bazin", "Gordon", "DCF", "Múltiplos", "Híbrido"])
             
             # Linha 2: Tese
@@ -751,3 +755,4 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
