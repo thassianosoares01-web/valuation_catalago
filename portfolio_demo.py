@@ -388,6 +388,35 @@ if opcao == "🏠 Início":
         <br><br>
     """, unsafe_allow_html=True)
     st.markdown("---")
+
+
+
+    # ==========================================================
+# 2. ÁREA DO VÍDEO (COM CONTROLE DE TAMANHO)
+# ==========================================================
+# URL do seu vídeo
+URL_VIDEO = "https://www.youtube.com/watch?v=dQw4w9WgXcQ" # Exemplo
+
+# --- CONTROLE FÁCIL AQUI ---
+# Defina a largura do vídeo em porcentagem (ex: 50 é metade da tela, 100 é total)
+LARGURA_DO_VIDEO = 60 
+
+with st.expander("🎥 Como usar a ferramenta (Vídeo Introdutório)", expanded=False):
+    # Lógica para centralizar e redimensionar o vídeo
+    if LARGURA_DO_VIDEO >= 100:
+        st.video(URL_VIDEO)
+    else:
+        # Cria 3 colunas: [Espaço Vazio] - [Vídeo] - [Espaço Vazio]
+        fator_espaco = (100 - LARGURA_DO_VIDEO) / 2
+        c_esq, c_video, c_dir = st.columns([fator_espaco, LARGURA_DO_VIDEO, fator_espaco])
+        
+        with c_video:
+            st.video(URL_VIDEO)
+            st.caption("Tutorial rápido sobre os modelos de Graham e Markowitz.")
+
+st.divider() # Linha divisória elegante
+    
+    
     col1, col2, col3 = st.columns(3)
    # Estilo CSS para o link de ação (cor roxa/azul moderna)
     cta_style = "color: #4F46E5; font-weight: bold; text-decoration: none; font-size: 0.9em;"
@@ -773,6 +802,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
