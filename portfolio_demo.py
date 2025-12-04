@@ -626,7 +626,7 @@ elif opcao == "📚 Wall de Análises":
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Ref. Inicial", f"R$ {p_ref:.2f}")
                 k2.metric(lbl, f"R$ {atual:.2f}")
-                k3.metric("Preço Analise", f"R$ {p_justo:.2f}")
+                k3.metric("Preço Análise", f"R$ {p_justo:.2f}")
                 k4.metric("Upside", f"{upside:+.1f}%", delta="Margem", delta_color="normal")
                 
                 with st.expander("📖 Ler Tese Completa"):
@@ -755,6 +755,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
