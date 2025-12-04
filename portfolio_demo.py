@@ -392,11 +392,11 @@ if opcao == "🏠 Início":
     with col1:
         with st.container(border=True):
             st.subheader("📊 Valuation")
-            st.markdown("Graham, Bazin e Gordon automatizados.")
+            st.markdown("Modelos de precificação de ações, Graham, Bazin e Gordon automatizados.")
     with col2:
         with st.container(border=True):
             st.subheader("📉 Markowitz")
-            st.markdown("Fronteira Eficiente e Monte Carlo.")
+            st.markdown("Utilize o modelo de Markovitz e análise o potencial de sua carteira, faça rebalanceamento utilizando esse mecanismo poderoso.")
     with col3:
         with st.container(border=True):
             st.subheader("📚 Catálogo")
@@ -755,6 +755,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
