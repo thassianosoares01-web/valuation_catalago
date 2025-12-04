@@ -296,7 +296,7 @@ st.sidebar.markdown("---")
 # ADICIONEI A NOVA OPÇÃO AQUI
 opcao = st.sidebar.radio(
     "Navegação:", 
-    ["🏠 Início", "📊 Valuation (Ações)", "📉 Otimização (Markowitz)", "📚 Wall de Análises", "🔐 Área Admin"]
+    ["🏠 Início", "📊 Valuation (Ações)", "📉 Otimização (Markowitz)", "📚 Estudos", "🔐 Área Admin"]
 )
 
 # LÓGICA DO MENU LATERAL DO CÓDIGO 2 (SÓ APARECE SE SELECIONADO)
@@ -802,6 +802,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
