@@ -392,15 +392,15 @@ if opcao == "🏠 Início":
     with col1:
         with st.container(border=True):
             st.subheader("📊 Valuation")
-            st.markdown("Modelos de precificação de ações, Graham, Bazin e Gordon automatizados.")
+            st.markdown("Automatize sua análise de preço justo. Aplique instantaneamente as metodologias clássicas de Graham, Bazin e Gordon para identificar oportunidades de valor.")
     with col2:
         with st.container(border=True):
             st.subheader("📉 Markowitz")
-            st.markdown("Utilize o modelo de Markovitz e análise o potencial de sua carteira, faça rebalanceamento utilizando esse mecanismo poderoso.")
+            st.markdown("Otimização de Portfólio. Utilize a Fronteira Eficiente para analisar o risco-retorno da sua carteira e realizar rebalanceamentos precisos.")
     with col3:
         with st.container(border=True):
             st.subheader("📚 Catálogo")
-            st.markdown("A nossa área de estudos, é utilizada para elaboração de Valuation de empresas utilizando diversas métricas, como DFC, Múltiplos e híbridos, todos os estudos são apenas a título de conhecimento, e não recomendação de compra ou venda.")
+            st.markdown("Biblioteca de Estudos. Acesse valuations detalhados e teses de investimento para fins educacionais. Explore métricas como DCF, Múltiplos e modelos híbridos.")
 
 elif opcao == "📊 Valuation (Ações)":
     st.title("📊 Valuation Fundamentalista")
@@ -755,6 +755,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
