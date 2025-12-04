@@ -729,10 +729,10 @@ elif opcao == "📚 Estudos":
 
             # APLICA A CORREÇÃO AQUI
             try: p_ref = limpar_float(item['Cotacao_Ref'])
-            except: p_ref = 0,0
+            except: p_ref = 0.0
             
             try: p_justo = limpar_float(item['Preco_Justo'])
-            except: p_justo = 0,0
+            except: p_justo = 0.0
 
 
             
@@ -882,6 +882,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
