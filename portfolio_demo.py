@@ -633,7 +633,7 @@ elif opcao == "📉 Otimização (Markowitz)":
                     final_val = opt_mid[-1]
                     st.success(f"💰 **Patrimônio Estimado (Cenário Ideal):** R$ {final_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
-elif opcao == "📚 Wall de Análises":
+elif opcao == "📚 Estudos":
     st.title("🏛️ Mural de Teses")
     st.markdown("Acompanhe as últimas análises publicadas pelo nosso time.")
     st.markdown("---")
@@ -802,6 +802,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
