@@ -602,7 +602,7 @@ elif opcao == "📚 Catálogo (Google Sheets)":
         # Loop Inverso (Mais recente primeiro)
       # Mudei a lógica do loop para pegar o ÍNDICE (i)
     # range(len(lista_db) - 1, -1, -1) -> Itera de trás para frente (do último para o primeiro)
-    for i in range(len(lista_db) - 1, -1, -1):
+        for i in range(len(lista_db) - 1, -1, -1):
         item = lista_db[i]
         
         # CÁLCULO DA LINHA NO GOOGLE SHEETS
@@ -671,3 +671,4 @@ elif opcao == "📚 Catálogo (Google Sheets)":
                     ))
                     fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
                     st.plotly_chart(fig, use_container_width=True)
+
