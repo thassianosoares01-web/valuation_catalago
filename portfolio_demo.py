@@ -254,6 +254,8 @@ def salvar_novo_estudo(novo_dict):
     try:
         sheet = conectar_gsheets()
         if sheet:
+            preco_justo = str(novo_dict['Preço Justo']).replace(",", ".")
+            cotacao_ref = str(novo_dict['Cotação Ref']).replace(",", ".")
             linha = [
                 novo_dict['Data'],
                 novo_dict['Ticker'],
@@ -882,6 +884,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
