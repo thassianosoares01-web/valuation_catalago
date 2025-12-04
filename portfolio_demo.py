@@ -586,66 +586,41 @@ elif opcao == "📉 Otimização (Markowitz)":
                     final_val = opt_mid[-1]
                     st.success(f"💰 **Patrimônio Estimado (Cenário Ideal):** R$ {final_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
-elif opcao == "📚 Catálogo (Google Sheets)":
-    # LÓGICA DO CÓDIGO 2 (ÁREA PRINCIPAL)
-    c_title, c_refresh = st.columns([4, 1])
-    c_title.title("🏛️ Catálogo de Estudos")
-    if c_refresh.button("🔄 Atualizar"):
-        st.cache_data.clear()
-        st.rerun()
-
+elif opcao == "📚 Wall de Análises":
+    st.title("🏛️ Mural de Teses")
+    st.markdown("Acompanhe as últimas análises publicadas pelo nosso time.")
     st.markdown("---")
 
-# CARREGA DO BANCO DE DADOS
+    # CARREGA DO BANCO DE DADOS
     lista_db = carregar_dados()
-    
+
     if not lista_db:
-        st.info("Nenhum estudo encontrado no banco de dados (Google Sheets).")
+        st.info("Nenhuma análise publicada ainda.")
     else:
-        # Note o espaço (TAB) antes do 'for' abaixo. Isso é obrigatório!
-        for i in range(len(lista_db) - 1, -1, -1):
-            item = lista_db[i]
-            
-            # CÁLCULO DA LINHA NO GOOGLE SHEETS
-            # Lista começa no 0, mas Sheets começa no 1 e tem cabeçalho.
-            # Logo: Índice 0 da lista = Linha 2 do Sheets.
-            row_number = i + 2 
-    
-            # Recupera premissas do JSON
-            try:
-                premissas_dict = json.loads(item['Premissas_JSON'])
-            except:
-                premissas_dict = {}
-    
-            # Valores Seguros
+        # Loop simples para leitura
+        for item in lista_db[::-1]:
+            # Recupera premissas
+            try: premissas_dict = json.loads(item['Premissas_JSON'])
+            except: premissas_dict = {}
+
+            # Valores numéricos
             try: p_ref = float(str(item['Cotacao_Ref']).replace("R$", "").replace(",", "."))
             except: p_ref = 0.0
             try: p_justo = float(str(item['Preco_Justo']).replace("R$", "").replace(",", "."))
             except: p_justo = 0.0
-    
-            # Lógica de Preço
+
+            # Cotação ao vivo
             live = obter_cotacao_atual(item['Ticker'])
             atual = live if live else p_ref
             lbl = "Ao Vivo" if live else "Ref. Offline"
-            
             upside = ((p_justo - atual) / atual) * 100 if atual > 0 else 0
             
+            # --- CARD DE EXIBIÇÃO ---
             with st.container(border=True):
-                # Layout do Cabeçalho do Card
-                c1, c2, c3 = st.columns([6, 2, 1]) 
-                
+                c1, c2 = st.columns([5, 1])
                 c1.subheader(f"📊 {item['Ticker']} | {item['Metodo']}")
                 c2.caption(f"📅 {item['Data']}")
                 
-                # BOTÃO DE EXCLUIR
-                # O key precisa ser único, por isso usamos o índice 'i'
-                if c3.button("🗑️", key=f"btn_del_{i}", help="Excluir este estudo"):
-                    with st.spinner("Excluindo..."):
-                        sucesso = deletar_estudo(row_number)
-                        if sucesso:
-                            st.success("Excluído!")
-                            st.rerun()
-    
                 st.divider()
                 
                 k1, k2, k3, k4 = st.columns(4)
@@ -654,24 +629,10 @@ elif opcao == "📚 Catálogo (Google Sheets)":
                 k3.metric("Preço Justo", f"R$ {p_justo:.2f}")
                 k4.metric("Upside", f"{upside:+.1f}%", delta="Margem", delta_color="normal")
                 
-                with st.expander("📖 Ver Tese Detalhada"):
-                    col_txt, col_graph = st.columns([1.5, 1])
-                    with col_txt:
-                        st.markdown("**Racional:**")
-                        st.info(item['Tese'])
-                        st.markdown("**Premissas:**")
-                        if premissas_dict:
-                            st.table(pd.DataFrame(list(premissas_dict.items()), columns=['Item', 'Valor']))
-                    
-                    with col_graph:
-                        fig = go.Figure(go.Indicator(
-                            mode="gauge+number+delta", value=atual,
-                            domain={'x': [0, 1], 'y': [0, 1]},
-                            title={'text': "Margem de Segurança"},
-                            delta={'reference': p_justo, 'increasing': {'color': "red"}, 'decreasing': {'color': "green"}},
-                            gauge={'axis': {'range': [None, p_justo*1.5]}, 'bar': {'color': "gray"}, 'steps': [{'range': [0, p_justo], 'color': "#d4edda"}], 'threshold': {'line': {'color': "green", 'width': 4}, 'thickness': 0.75, 'value': p_justo}}
-                        ))
-                        fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
-                        st.plotly_chart(fig, use_container_width=True)
+                with st.expander("📖 Ler Tese Completa"):
+                    st.info(item['Tese'])
+                    if premissas_dict:
+                        st.markdown("**Premissas consideradas:**")
+                        st.table(pd.DataFrame(list(premissas_dict.items()), columns=['Item', 'Valor']))
 
 
