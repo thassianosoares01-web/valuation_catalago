@@ -626,7 +626,7 @@ elif opcao == "📚 Wall de Análises":
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Ref. Inicial", f"R$ {p_ref:.2f}")
                 k2.metric(lbl, f"R$ {atual:.2f}")
-                k3.metric("Preço Justo", f"R$ {p_justo:.2f}")
+                k3.metric("Preço Analise", f"R$ {p_justo:.2f}")
                 k4.metric("Upside", f"{upside:+.1f}%", delta="Margem", delta_color="normal")
                 
                 with st.expander("📖 Ler Tese Completa"):
@@ -693,7 +693,7 @@ elif opcao == "🔐 Área Admin":
                 if f_ticker and f_justo > 0:
                     novo = {
                         "Ticker": f_ticker, "Data": datetime.now().strftime("%d/%m/%Y"),
-                        "Preço de análise": f_justo, "Cotação Ref": f_cotacao,
+                        "Preço Justo": f_justo, "Cotação Ref": f_cotacao,
                         "Método": f_metodo, "Tese": f_tese,
                         "Premissas": st.session_state.temp_premissas.copy()
                     }
@@ -755,5 +755,6 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
