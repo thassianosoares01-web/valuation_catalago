@@ -390,34 +390,36 @@ if opcao == "🏠 Início":
     st.markdown("---")
     col1, col2, col3 = st.columns(3)
    # Estilo CSS para o link de ação (cor roxa/azul moderna)
-cta_style = "color: #4F46E5; font-weight: bold; text-decoration: none; font-size: 0.9em;"
+    cta_style = "color: #4F46E5; font-weight: bold; text-decoration: none; font-size: 0.9em;"
+    
+    with col1:
+        with st.container(border=True):
+            st.subheader("📊 Valuation")
+            st.markdown(f"""
+            Automatize sua análise de preço justo.<br><br>
+            Aplique instantaneamente as metodologias de **Graham, Bazin e Gordon** para identificar oportunidades.<br><br>
+            <span style='{cta_style}'>Acessar Ferramenta ➝</span>
+            """, unsafe_allow_html=True)
+    
+    with col2:
+        with st.container(border=True):
+            st.subheader("📉 Markowitz")
+            st.markdown(f"""
+            Otimização de Portfólio.<br><br>
+            Utilize a **Fronteira Eficiente** para analisar o risco-retorno e realizar **rebalanceamentos precisos**.<br><br>
+            <span style='{cta_style}'>Otimizar Carteira ➝</span>
+            """, unsafe_allow_html=True)
+    
+    with col3:
+        with st.container(border=True):
+            st.subheader("📚 Catálogo")
+            st.markdown(f"""
+            Biblioteca de Estudos.<br><br>
+            Acesse valuations e teses para fins educacionais. Explore métricas como **DCF, Múltiplos e modelos híbridos**.<br><br>
+            <span style='{cta_style}'>Explorar Estudos ➝</span>
+            """, unsafe_allow_html=True)
 
-with col1:
-    with st.container(border=True):
-        st.subheader("📊 Valuation")
-        st.markdown(f"""
-        Automatize sua análise de preço justo.<br><br>
-        Aplique instantaneamente as metodologias de **Graham, Bazin e Gordon** para identificar oportunidades.<br><br>
-        <span style='{cta_style}'>Acessar Ferramenta ➝</span>
-        """, unsafe_allow_html=True)
 
-with col2:
-    with st.container(border=True):
-        st.subheader("📉 Markowitz")
-        st.markdown(f"""
-        Otimização de Portfólio.<br><br>
-        Utilize a **Fronteira Eficiente** para analisar o risco-retorno e realizar **rebalanceamentos precisos**.<br><br>
-        <span style='{cta_style}'>Otimizar Carteira ➝</span>
-        """, unsafe_allow_html=True)
-
-with col3:
-    with st.container(border=True):
-        st.subheader("📚 Catálogo")
-        st.markdown(f"""
-        Biblioteca de Estudos.<br><br>
-        Acesse valuations e teses para fins educacionais. Explore métricas como **DCF, Múltiplos e modelos híbridos**.<br><br>
-        <span style='{cta_style}'>Explorar Estudos ➝</span>
-        """, unsafe_allow_html=True)
 elif opcao == "📊 Valuation (Ações)":
     st.title("📊 Valuation Fundamentalista")
     with st.container(border=True):
@@ -771,6 +773,7 @@ elif opcao == "🔐 Área Admin":
 
     elif senha:
         st.error("Senha incorreta. Tente novamente.")
+
 
 
 
