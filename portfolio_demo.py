@@ -594,15 +594,14 @@ elif opcao == "📚 Catálogo (Google Sheets)":
     st.markdown("---")
 
     # CARREGA DO BANCO DE DADOS
-    lista_db = carregar_dados()
+    # CARREGA DO BANCO DE DADOS
+lista_db = carregar_dados()
 
-    if not lista_db:
-        st.info("Nenhum estudo encontrado no banco de dados (Google Sheets).")
-    else:
-        # Loop Inverso (Mais recente primeiro)
-      # Mudei a lógica do loop para pegar o ÍNDICE (i)
-    # range(len(lista_db) - 1, -1, -1) -> Itera de trás para frente (do último para o primeiro)
-        for i in range(len(lista_db) - 1, -1, -1):
+if not lista_db:
+    st.info("Nenhum estudo encontrado no banco de dados (Google Sheets).")
+else:
+    # Note o espaço (TAB) antes do 'for' abaixo. Isso é obrigatório!
+    for i in range(len(lista_db) - 1, -1, -1):
         item = lista_db[i]
         
         # CÁLCULO DA LINHA NO GOOGLE SHEETS
@@ -631,12 +630,13 @@ elif opcao == "📚 Catálogo (Google Sheets)":
         
         with st.container(border=True):
             # Layout do Cabeçalho do Card
-            c1, c2, c3 = st.columns([6, 2, 1]) # Adicionei uma coluna para o botão de apagar
+            c1, c2, c3 = st.columns([6, 2, 1]) 
             
             c1.subheader(f"📊 {item['Ticker']} | {item['Metodo']}")
             c2.caption(f"📅 {item['Data']}")
             
             # BOTÃO DE EXCLUIR
+            # O key precisa ser único, por isso usamos o índice 'i'
             if c3.button("🗑️", key=f"btn_del_{i}", help="Excluir este estudo"):
                 with st.spinner("Excluindo..."):
                     sucesso = deletar_estudo(row_number)
@@ -671,4 +671,3 @@ elif opcao == "📚 Catálogo (Google Sheets)":
                     ))
                     fig.update_layout(height=250, margin=dict(l=20, r=20, t=30, b=20))
                     st.plotly_chart(fig, use_container_width=True)
-
